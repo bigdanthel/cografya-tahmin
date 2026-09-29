@@ -315,6 +315,8 @@ Ayrıntılı anlatı: `PLAN.md` §6.
 | `basKentSec` idempotent değildi | 5 senkron tıklama 5 tur sayıyordu |
 | `sonTuruRef` bir *efektle* güncellenirse | Efektler iki tıklama arasında çalışmaz — aynı karede hâlâ `null` görünür |
 
+> Bu ortama özgü kısıtlar ve ölçüm yöntemleri için: **CALISMA-NOTU.md**
+
 ## Lisans
 
 Kod: özgür kullanım. Coğrafi veriler: [Natural Earth](https://www.naturalearthdata.com/)
