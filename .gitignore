@@ -1,0 +1,14 @@
+node_modules
+dist
+.DS_Store
+*.log
+.vite
+
+# Test koşucusunun geçici paketleme klasörü
+.test-gecici-*
+
+# Build çıktıları — 'npm run build:data' her seferinde yeniden üretiyor.
+# (Bayraklar flag-icons paketinden kopyalanıyor, world.json pipeline'dan.)
+src/data/world.json
+public/flags/
+tsconfig.tsbuildinfo
