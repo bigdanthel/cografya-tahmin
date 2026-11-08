@@ -55,6 +55,30 @@ export const MODLAR: ModTanimi[] = [
   },
 ]
 
+/* ── Zorluk ağırlıklı seçim (Kolay modu) ─────────────────────────────────
+   `zorluk` alanı soru seçiminde kullanılmıyordu — Kolay modda zorluk 5
+   Mikronezya ile zorluk 1 Türkiye aynı olasılıkla geliyordu. Kolay modda
+   seçim artık ağırlıklı: kolay ülkeler daha sık sorulur. Diğer modlar
+   (Bayrak/Körlük/Hız) bilinçli olarak uniform kalır — orada zorluk
+   çeşitliliği oyunun parçası. */
+
+/** Seçim ağırlığı: zorluk 1→5 … 5→1. Havuz dışı (6) aday listesine girmez. */
+export function zorlukAgirligi(u: Country): number {
+  return 6 - u.zorluk
+}
+
+/** Ağırlıklı rastgele seçim — saf fonksiyon (test edilebilir). */
+export function agirlikliSecim(adaylar: Country[]): Country {
+  let toplam = 0
+  for (const u of adaylar) toplam += zorlukAgirligi(u)
+  let r = Math.random() * toplam
+  for (const u of adaylar) {
+    r -= zorlukAgirligi(u)
+    if (r <= 0) return u
+  }
+  return adaylar[adaylar.length - 1]!
+}
+
 export interface Soru {
   hedef: Country
   /** Bu soruda ne gösterilir */
@@ -77,7 +101,7 @@ export interface TurSonucu {
   kutu: PuanKutusu
   basKentGirdi: string | null
   basKentPuan: number
-  basKentTur: 'tam' | 'yakın' | 'onay' | 'yanlış' | 'bos'
+  basKentTur: 'tam' | 'yanlış' | 'bos'
   /** Ham (cezasız) puan — dağılım çubuğunda referans */
   ham: number
   toplam: number
@@ -105,12 +129,25 @@ export function bugun(tarih = new Date()): string {
   return `${y}-${a}-${g}`
 }
 
-export function gununUlkesi(havuz: Country[], tarih = new Date()): Country {
-  const anahtar = bugun(tarih)
-  let hash = 0
-  for (let i = 0; i < anahtar.length; i++) {
-    hash = (hash * 31 + anahtar.charCodeAt(i)) >>> 0
+/** cyrb53 — hızlı, iyi dağılan 53 bit string hash'i (bryc, kamu malı).
+ *  Eski `hash = hash*31 + charCode` düzeni ardışık tarihlerde ("2026-09-30"
+ *  → "2026-10-01") neredeyse ardışık sonuç veriyordu, yani havuzda sırayla
+ *  ilerliyordu ve Günün Ülkesi bir gün önceden tahmin edilebiliyordu. */
+function cyrb53(str: string, seed = 0): number {
+  let h1 = 0xdeadbeef ^ seed
+  let h2 = 0x41c6ce57 ^ seed
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
   }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return 4294967296 * (2097151 & h2) + (h1 >>> 0)
+}
+
+export function gununUlkesi(havuz: Country[], tarih = new Date()): Country {
+  const hash = cyrb53(bugun(tarih))
   return havuz[hash % havuz.length]!
 }
 
@@ -169,11 +206,16 @@ export function korlukIpuclari(u: Country): Ipucu[] {
  *  Coğrafi olarak en faydalı ipuç: kıtayı zaten biliyorsun, kıtayı bilmiyorsan
  *  zaten ilk ipucu işe yarıyor. */
 function konumEtiketi(u: Country): string {
-  const [lon, lat] = u.centroid
+  // `centroid` ağırlık merkezidir ve okyanusa düşebilir (bkz. Country.centroid
+  // yorumu); `isabet` her zaman ülkenin İÇİNDE kalan noktadır, o yüzden
+  // yarımküre tarifi için o kullanılır.
+  const [lon, lat] = u.isabet
   const kuzeyGuney = lat >= 0 ? 'ekvatorun kuzeyinde' : 'ekvatorun güneyinde'
   const doguBati = lon >= 0 ? 'doğu yarımkürede' : 'batı yarımkürede'
+  // `kutu[0]` build'de antimeridyen sarmalı düzeltilerek yazılır (her zaman
+  // pozitif, gerçek derece genişliği). 100°'den geniş bir ülke iki
+  // yarımküreyi de kapsıyor demektir (Rusya, ABD, Kiribati…).
   const kutuGenislik = u.kutu[0]
-  // Kutu çok genişse ülke iki yarımküreyi de kapsıyor (Rusya, ABD, Kiribati)
   const ikiYari = kutuGenislik > 100 ? ' — iki yarımküreyi de kapsıyor' : ''
   return `${kuzeyGuney}, ${doguBati}${ikiYari}`
 }
@@ -192,14 +234,13 @@ function adMaskesi(ad: string): string {
   return `${ad[0]}${'·'.repeat(ad.length - 2)}${ad[ad.length - 1]}`
 }
 
-/** Ülke büyüklüğü — bounding box alanından kaba tahmin.
-    Gerçek yüzölçümü (km²) daha iyi olurdu ama veri tabanında yok. */
+/** Ülke büyüklüğü — build'de geoArea ile hesaplanan gerçek km² üzerinden.
+    Eşikler 194 ülkelik havuzun gerçek alan dağılımına göre kalibre edildi. */
 function alanEtiketi(u: Country): string {
-  const [genislik, yukseklik] = u.kutu
-  const alan = genislik * yukseklik
-  if (alan > 20000) return 'Kıta ölçeği — çok büyük'
-  if (alan > 3000) return 'Büyük bir ülke'
-  if (alan > 400) return 'Orta büyüklükte'
-  if (alan > 20) return 'Küçük bir ülke'
+  const km2 = u.alanKm2
+  if (km2 > 2_000_000) return 'Kıta ölçeği — çok büyük'
+  if (km2 > 500_000) return 'Büyük bir ülke'
+  if (km2 > 100_000) return 'Orta büyüklükte'
+  if (km2 > 20_000) return 'Küçük bir ülke'
   return 'Minik bir ülke — yakınlaştırmak gerek'
 }

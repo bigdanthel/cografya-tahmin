@@ -7,7 +7,7 @@
  */
 
 import { geoContains, geoArea, geoBounds } from 'd3-geo'
-import { countries, havuz, ulkeBul } from '../src/lib/world'
+import { countries, havuz, ulkeBul, gorselSekil } from '../src/lib/world'
 import { baslik, ok, esit, toplu, bitir } from './_yardim'
 
 /** `toplu()` her elemanın `ad` alanını hata listesinde gösteriyor. */
@@ -16,8 +16,8 @@ const havuzHepsi = havuz.map((u) => ({ ad: u.tr, u }))
 
 baslik('Kapsam')
 
-esit(countries.length, 200, 'toplam 200 ülke kaydı')
-esit(havuz.length, 193, 'soru havuzunda 193 ülke')
+esit(countries.length, 201, 'toplam 201 ülke kaydı')
+esit(havuz.length, 194, 'soru havuzunda 194 ülke')
 ok(havuz.length < countries.length, 'havuz tüm ülkelerden küçük (7 ülke haritada ama sorulmuyor)')
 ok(havuz.every((u) => u.havuz), 'havuz filtresi doğru çalışıyor')
 
@@ -34,7 +34,7 @@ toplu('geçerli kıta', hepsi, ({ u }) =>
 
 /* TUZAK: 7 havuz dışı ülkenin zorluğu 6'dır ("sorulmaz" işareti). Bunlar
    haritada görünür ama soru havuzunda yoktur. Test ilk yazıldığında 1-5
-   kuralını TÜM ülkeleri uyguladı ve 193/200 dedi — oysa kasıtlı bir
+   kuralını TÜM ülkeleri uyguladı ve 194/201 dedi — oysa kasıtlı bir
    işaretleme. Not: `Country.zorluk` tipi 1|2|3|4|5 diyor ama derleme
    `KUCUK_VARIANT`ta 6 üretiyor; karşılaştırma için genişletiliyor. */
 const zorluk6 = countries.filter((u) => (u.zorluk as number) === 6)
@@ -95,15 +95,18 @@ toplu('bounds geoBounds ile uyumlu', hepsi, ({ u }) => {
   return Math.abs(b[0][0] - u.bounds[0][0]) < 0.01 && Math.abs(b[1][1] - u.bounds[1][1]) < 0.01
 })
 
-/* TUZAK: sarmalanmış sınır kutulu ülkelerde (antimeridian'ı geçen ABD,
-   Rusya, Yeni Zelanda, Kiribati) `bounds[1][0] - bounds[0][0]` NEGATİF çıkar:
-   ölçüldü — ABD −239°, Yeni Zelanda −337°. `kutu` ham fark olduğu için
-   negatif kalıyor ve "kutu > 100" gibi karşılaştırmalar yanıltıcı olabilir.
-   Havuzdaki hiçbir ülke sarmalanmış kutulu değil (hepsi tek yarımküre). */
+/* TUZAK (düzeltildi): sarmalanmış sınır kutulu ülkelerde (antimeridian'ı
+   geçen ABD, Rusya, Yeni Zelanda, Kiribati) `bounds[1][0] - bounds[0][0]`
+   NEGATİF çıkar (ölçüldü — ABD −239°, Yeni Zelanda −337°). Build artık
+   negatifse 360 ekleyip gerçek (kısa yoldan) genişliği hesaplıyor, bu
+   yüzden `kutu[0]` bu ülkelerde de POZİTİF ve gerçekçi (bkz. build-data.mjs).
+   Önceden düzeltilmemiş hâli "kutu > 100" gibi karşılaştırmaları (Körlük
+   modu Konum ipucu) yanıltıyordu — bu ülkeler hiç "iki yarımküreyi de
+   kapsıyor" etiketini alamıyordu. */
 const sarmali = countries.filter((u) => u.bounds[0][0] > u.bounds[1][0])
 ok(
-  sarmali.every((u) => u.kutu[0] < 0),
-  'sarmalanmış kutularda kutu genişliği negatif (beklenen, izleniyor)',
+  sarmali.every((u) => u.kutu[0] > 0),
+  'sarmalanmış kutularda antimeridyen sarması düzeltilip genişlik pozitif',
   sarmali.map((u) => `${u.tr} ${u.kutu[0].toFixed(0)}°`).join(', '),
 )
 toplu(
@@ -121,12 +124,25 @@ ok(
   `${sarmaliHavuzda.length}/${sarmali.length}: ${sarmaliHavuzda.map((u) => u.tr).join(', ')}`,
 )
 
+baslik('Hibrit kapsama (hit-test çizimle aynı geometriyi kullanıyor)')
+
+/* Globe uzaktayken hibrit (110m) geometriyi ÇİZİYOR ve hit-test'i de artık
+   onunla yapıyor (`gorselSekil`). Hibritte karşılığı olmayan bir havuz
+   ülkesi sessizce 50m `shape`'e düşerdi — kıyı şeridinde görünenle sayılan
+   yine ayrışırdı. Not: `OLCEK=110m` varyantında mikro-ülkelerin hibritte
+   karşılığı yoktur; bu test varsayılan (50m) build'i doğrular. */
+toplu(
+  'havuzdaki her ülkenin hibritte karşılığı var',
+  havuzHepsi,
+  ({ u }) => gorselSekil(u, false) !== u.shape,
+)
+
 baslik('Bayraklar')
 
 const bayraksiz = havuz.filter((u) => !u.bayrak)
 ok(bayraksiz.length === 0, 'her havuz ülkesinin bayrağı var', bayraksiz.map((u) => u.tr).join(', '))
-toplu('bayrak yolu /flags/ altında ve .svg', havuzHepsi, ({ u }) =>
-  Boolean(u.bayrak && u.bayrak.startsWith('/flags/') && u.bayrak.endsWith('.svg')),
+toplu('bayrak yolu göreceli flags/ altında ve .svg', havuzHepsi, ({ u }) =>
+  Boolean(u.bayrak && u.bayrak.startsWith('flags/') && u.bayrak.endsWith('.svg')),
 )
 ok(
   new Set(havuz.map((u) => u.bayrak)).size === havuz.length,
@@ -135,11 +151,11 @@ ok(
 
 baslik('Yarıküre işareti')
 
-/* bounds 300°'yi aşıyorsa ülke küreyi ikiye böler. */
+/* bounds 300°'yi aşıyorsa ülke küreyi ikiye böler. `kutu[0]` artık
+   antimeridyen sarmasında da düzeltilmiş (pozitif) olduğu için tek koşul yeterli. */
 const ikiYari = countries.filter((u) => u.yarikure)
 ok(
-  ikiYari.length > 0 &&
-    ikiYari.every((u) => u.kutu[0] > 300 || u.bounds[1][0] - u.bounds[0][0] < 0),
+  ikiYari.length > 0 && ikiYari.every((u) => u.kutu[0] > 300),
   'yarikure işareti sadece gerçekten iki yarımküreye yayılan ülkelerde',
   `${ikiYari.length} ülke: ${ikiYari.map((u) => u.tr).join(', ')}`,
 )

@@ -1,6 +1,6 @@
 import { feature } from 'topojson-client'
 import type { GeometryCollection, Topology } from 'topojson-specification'
-import type { Feature, MultiPolygon, Polygon } from 'geojson'
+import type { Feature, FeatureCollection, MultiPolygon, Polygon } from 'geojson'
 import raw from '../data/world.json'
 
 /** Bir ülkenin oyun için gereken tüm bilgiler. */
@@ -15,23 +15,24 @@ export interface Country {
   tr: string
   /** Başkent (doğru cevap) */
   bas: string
-  /** Tam puanla kabul edilen alternatif başkentler */
-  alt: string[]
-  /** %95 puanla kabul edilen yazımlar (örn. ülke adıyla yanlış) */
-  bonusAlts: string[]
+  /* NOT: küratör tablosundaki `alt`/`bonusAlts` (alternatif başkent yazımları)
+     çoktan seçmeli modda kullanılmadığı için runtime'a taşınmıyor (bkz.
+     build-data.mjs beyaz listesi). Değerler küratörde SAKLI — serbest yazma
+     ("Uzman") modu geri gelirse oradan alınacak, o yüzden silinmiyor. */
   kita: Kita
   /** Sınır anlaşmazlıklarında de kabul edilen alternatif kıta */
   kitaAlt: Kita[]
   /** Toleranslı puanlama için komşu ülke anahtarları */
   komsu: string[]
-  zorluk: 1 | 2 | 3 | 4 | 5
+  /** 1-5 = soru zorluğu; 6 = havuz dışı bölge işareti (bkz. `havuz`) */
+  zorluk: 1 | 2 | 3 | 4 | 5 | 6
   /** Soru havuzunda olup olmadığı */
   havuz: boolean
   /** `public/flags/` altındaki bayrak yolu; yoksa emoji'ye düşülür */
   bayrak: string | null
   /** [lon, lat] — ülkenin küre üzerindeki ağırlık merkezi (alan ağırlıklı).
       Uzak toprakları olan ülkelerde bu OKYANUSA düşebilir (Fransa, Kiribati,
-      Malezya, Norveç…). Ölçüldü: 200 ülkenin 26'sında geometri dışında. */
+      Malezya, Norveç…). Ölçüldü: 201 ülkenin 29'unda geometri dışında (havuzda 26). */
   centroid: [number, number]
   /** [lon, lat] — ÜLKENİN İÇİNDE kalan referans nokta. Puanlama ve "Yön
       İpucu" BUNU kullanır. `centroid` içerideyse ikisi aynıdır; değilse
@@ -42,6 +43,8 @@ export interface Country {
   bounds: [[number, number], [number, number]]
   /** Bounding box genişliği/yüksekliği (derece) */
   kutu: [number, number]
+  /** Gerçek yüzölçüm (km²) — geoArea × Dünya yarıçapı². Körlük "Yaklaşık alan" ipucu bunu kullanır. */
+  alanKm2: number
   /** Küreyi iki yarıya bölen ülke (Rusya, ABD, Fildişi Sahili…) */
   yarikure?: boolean
   /** Coğrafi şekil — runtime'da üretilir */
@@ -50,23 +53,16 @@ export interface Country {
 
 export type Kita = 'Avrupa' | 'Asya' | 'Afrika' | 'Kuzey Amerika' | 'Güney Amerika' | 'Okyanusya'
 
-export interface Lake extends Feature<Polygon | MultiPolygon> {
-  properties: { ad: string | null }
-}
-
 interface RawWorld {
-  olcek: string
-  uretim: string
   geometri: Topology<{ countries: GeometryCollection }>
-  gol: Lake[]
-  hazar: Feature<Polygon | MultiPolygon>[]
+  hibrit: FeatureCollection<Polygon | MultiPolygon>
 }
 
 const world = raw as unknown as RawWorld
 
 /** TopoJSON nesnesi → ülke listesi (meta veri geometriye iliştirilmiş hali) */
 /** TopoJSON geometrisine iliştirilmiş küratör meta verisi (build-data.mjs yazar) */
-interface MetaHam extends Omit<Country, 'shape'> {}
+type MetaHam = Omit<Country, 'shape'>
 
 function ulkeleriCoz(topology: Topology<{ countries: GeometryCollection }>): Country[] {
   const geometriler = topology.objects.countries.geometries
@@ -83,11 +79,6 @@ function ulkeleriCoz(topology: Topology<{ countries: GeometryCollection }>): Cou
 }
 
 export const countries: Country[] = ulkeleriCoz(world.geometri)
-
-export const lakes: Lake[] = world.gol
-export const hazar: Feature<Polygon | MultiPolygon>[] = world.hazar
-export const olcek: string = world.olcek
-export const uretim: string = world.uretim
 
 // ── Sorgular ──────────────────────────────────────────────────────────────────
 
@@ -111,6 +102,26 @@ export function ulkeBul(anahtar: string): Country | undefined {
 /** Bir ülkenin toleranslı kabul kümesi: kendisi + komşuları. */
 export function kabulKumesi(c: Country): Set<string> {
   return new Set([c.anahtar, ...c.komsu])
+}
+
+/* ── Hit-test geometrisi ───────────────────────────────────────────────────
+   Küre uzaktayken HİBRİT (110m gövde + 50m mikro-ülkeler), yakınlaştırınca
+   50m detay ÇİZİLİR — ama isabet testi eskiden her zaman 50m `shape` ile
+   yapılıyordu. Kıyıya yakın tıklamalarda görünen kara ile sayılan ülke
+   teorik olarak ayrışıyordu (110m kıyı çizgisi 50m'den farklıdır).
+   `gorselSekil` çizimde görüneni döndürür; `detayMi`, Globe'daki çizim
+   eşiğiyle aynı olmalı (ekran yarıçapı ≥ YARICAP·3). */
+const hibritHarita = new Map<string, Feature<Polygon | MultiPolygon>>()
+for (const f of world.hibrit.features ?? []) {
+  const a = (f.properties as { meta?: { anahtar?: string } } | null)?.meta?.anahtar
+  if (a) hibritHarita.set(a, f)
+}
+
+/** Tıklama anında test edilecek şekil: uzaktayken hibrit, yakında tam detay.
+ *  Hibritte karşılığı yoksa (küçük varyantta mikro-ülkeler) `shape`'e düşülür. */
+export function gorselSekil(ulke: Country, detayMi: boolean): Feature<Polygon | MultiPolygon> {
+  if (!detayMi) return hibritHarita.get(ulke.anahtar) ?? ulke.shape
+  return ulke.shape
 }
 
 /** Kıtayı tolerantlı karşılaştırır (Türkiye: Asya da Avrupa da kabul). */

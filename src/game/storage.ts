@@ -44,16 +44,62 @@ export const BOS_ISTATISTIK: Istatistik = {
   dailyGecmisi: {},
 }
 
+/** Kayıttan gelen sayısal alanı sonlu sayıya indirger.
+ *  JSON.parse her şeyi kabul eder: `tur: "5"` (string), `puan: "abc"`,
+ *  `NaN`, null, taşan kayan nokta … Bunlardan birkaçı olduğu gibi geçseydi
+ *  `istatistik.puan + puan` string-birleştirme ("abc120") ve
+ *  `undefined + 0 → NaN` üretirdi; arayüz "NaN tur oynandı" gösteriyordu.
+ *  Bozuk alanı varsayılana düşürmek, zararsız (kayıt eski/elle düzenlenmiş
+ *  olabilir) tek davranış. */
+function sayi(deger: unknown, varsayilan = 0): number {
+  if (typeof deger === 'number') return Number.isFinite(deger) ? deger : varsayilan
+  /* Yalnızca sayı-sal metin ("90") sayıya çevirilir: Number('') ve
+     Number([3]) gibi tuhaf dönüşümler (tek elemanlı dizinin değeri)
+     buraya sızmaz. */
+  if (typeof deger !== 'string' || deger.trim() === '' || /[eE+-]|0x/.test(deger)) {
+    return varsayilan
+  }
+  const n = Number(deger)
+  return Number.isFinite(n) ? n : varsayilan
+}
+
 export function yukle(): Istatistik {
   try {
     const ham = localStorage.getItem(ANAHTAR)
     if (!ham) return { ...BOS_ISTATISTIK }
     const veri = JSON.parse(ham) as Partial<Istatistik>
+    /* Spread etmek yerine alanları ELEMEYEREK kopyalıyoruz: yalnızca
+       şemadaki alanlar, yalnızca geçerli tipler. Spread `__proto__`
+       anahtarını bile kendi alan olarak tanımlayıp prototipi kirletmez,
+       ama yanlış tipli alanları da olduğu gibi taşır — o yüzden açıkça
+       seçiyoruz. */
+    const ulkeBazli: Record<string, { dogru: number; toplam: number }> = {}
+    for (const [k, v] of Object.entries(veri.ulkeBazli ?? {})) {
+      if (typeof v !== 'object' || v === null) continue
+      const g = v as { dogru?: unknown; toplam?: unknown }
+      ulkeBazli[k] = { dogru: sayi(g.dogru), toplam: sayi(g.toplam) }
+    }
+    const dailyGecmisi: Record<string, DailyKayit> = {}
+    for (const [k, v] of Object.entries(veri.dailyGecmisi ?? {})) {
+      if (typeof v !== 'object' || v === null) continue
+      const g = v as { ulke?: unknown; puan?: unknown; basarili?: unknown }
+      dailyGecmisi[k] = { ulke: String(g.ulke ?? ''), puan: sayi(g.puan), basarili: Boolean(g.basarili) }
+    }
+    const daily = (() => {
+      if (typeof veri.daily !== 'object' || veri.daily === null) return null
+      const g = veri.daily as { tarih?: unknown; anahtar?: unknown; puan?: unknown }
+      if (typeof g.tarih !== 'string') return null
+      return { tarih: g.tarih, anahtar: String(g.anahtar ?? ''), puan: sayi(g.puan) }
+    })()
     return {
-      ...BOS_ISTATISTIK,
-      ...veri,
-      ulkeBazli: veri.ulkeBazli ?? {},
-      dailyGecmisi: veri.dailyGecmisi ?? {},
+      tur: sayi(veri.tur),
+      puan: sayi(veri.puan),
+      seri: sayi(veri.seri),
+      enUzunSeri: sayi(veri.enUzunSeri),
+      dogru: sayi(veri.dogru),
+      ulkeBazli,
+      daily,
+      dailyGecmisi,
     }
   } catch {
     return { ...BOS_ISTATISTIK }
@@ -106,6 +152,10 @@ export function dailyKaydet(
   tarih = new Date(),
 ): Istatistik {
   const t = bugun(tarih)
+  // Bugün zaten kaydedilmişse üzerine YAZMA — mod tekrar oynanabiliyor
+  // (bilinçli olarak engellenmiyor) ama ilk sonuç kalıcı olmalı, yoksa
+  // oyuncu cevabı gördükten sonra yeniden oynayıp puanı/streak'i değiştirebilir.
+  if (istatistik.dailyGecmisi[t]) return istatistik
   return {
     ...istatistik,
     daily: { tarih: t, anahtar: ulkeAnahtar, puan },

@@ -59,6 +59,16 @@ al, tekrar eden değer var mı bak. `A → B → A` deseni iki animasyonun
 **3. Kayıtlı veriden say** — en güvenilir yol. 193 ülkeyi × 24 rotasyon
 tarayıp her birinin tıklanabilirliğini ölçmek, ekrana bakmaktan kesin.
 
+**4. Çizimi senkron tetikle** — sürükleme/animasyon çizimi `cizErtele`
+ile rAF'e ertelenir; bu ortamda rAF kesik olduğundan piksel okuması
+**eski kareyi** görür (sahte çelişkiler üretir). Ölçümden hemen önce:
+```js
+window.dispatchEvent(new Event('resize'))
+```
+`resize → olcekle → ciz()` zinciri senkron çalışır, okuma taze olur
+(2026-11-08 gözle test turunda sürükleme yönü doğrulaması bu desenle
+yapıldı: sola çekince merkez 35°E arazi, sağa çekince Körfez suyu).
+
 > **Tuzak:** ölçümün kendisi hatalıysa ürün hatası sanılan sahte bulgular
 > üretir. Bu oturumda üç kez oldu (normalize'a ham girdi, ASCII/UTF-8 kaynak
 > adı, sınır ötesi boylam). Şüphede kalınca **önce ölçümü doğrula.**

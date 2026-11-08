@@ -6,7 +6,7 @@
  * ama cezalı kalmalı, yanlış seçenekte puan sıfırlanmalı.
  */
 
-import { geoDistance } from 'd3-geo'
+import { geoContains, geoDistance } from 'd3-geo'
 import { havuz, ulkeBul } from '../src/lib/world'
 import {
   tiklamayiPuanla,
@@ -20,7 +20,7 @@ import {
   TOLERANS_CARPAN,
 } from '../src/game/score'
 import { secenekUret } from '../src/game/basKentSecenekleri'
-import { korlukIpuclari, adBulAyarla, gununUlkesi } from '../src/game/types'
+import { korlukIpuclari, agirlikliSecim, zorlukAgirligi, adBulAyarla, gununUlkesi } from '../src/game/types'
 import { baslik, ok, esit, toplu, bitir } from './_yardim'
 
 adBulAyarla((a) => ulkeBul(a)?.tr)
@@ -112,6 +112,48 @@ ok(denize.konum <= 20, 'denize tıklama konum tavanı 20', `${denize.konum}`)
 ok(denize.mesafeKm > 0, 'mesafe hesaplanıyor')
 ok(!denize.tam && !denize.toleransli, 'deniz hiçbir kabul sayılmıyor')
 
+baslik('Ülke içi tıklama: referans noktaya uzaklık puanı düşürmemeli')
+
+/* TASARIM KARARI (PLAN §4.1): görev "ülkeyi bulmak". Ülke sınırları içinde
+   her tıklama 100 konum puanı verir; mesafe eğrisi yalnızca YANLIŞ
+   tıklamalarda kısmi puan için kullanılır. Eskiden Moskova'ya tıklamak
+   Rusya için ~45 veriyordu (mesafe Sibirya'daki `isabet` noktasına
+   ölçülüyordu). */
+const rusya = ulkeBul('Russia')!
+const moskova: [number, number] = [37.62, 55.75]
+ok(geoContains(rusya.shape, moskova), 'Moskova Rusya geometrisi içinde (test önkoşulu)')
+ok(km(moskova, rusya.isabet) > 1000, 'Moskova referans noktadan uzakta (test anlamlı)', `${Math.round(km(moskova, rusya.isabet))} km`)
+const moskovaKutu = tiklamayiPuanla(rusya, moskova, rusya.anahtar)
+esit(moskovaKutu.konum, 100, 'Moskova tıklaması Rusya için 100 konum puanı')
+esit(moskovaKutu.mesafeKm, 0, 'ülke içi tıklamada mesafe 0 sayılır')
+
+/* Genelleme: HER ülkede `isabet`'e en uzak iç nokta bile 100 vermeli.
+   Sınır kutusunda ızgara taraması (antimeridyen sarması düzeltilerek). */
+const dusuk: string[] = []
+for (const u of havuz) {
+  const [[bati, guney], [dogu, kuzey]] = u.bounds
+  const genislik = bati <= dogu ? dogu - bati : dogu - bati + 360
+  let enUzak: [number, number] = u.isabet
+  let enUzakKm = 0
+  const ADIM = 12
+  for (let i = 0; i <= ADIM; i++) {
+    let lon = bati + (genislik * i) / ADIM
+    if (lon > 180) lon -= 360
+    for (let j = 0; j <= ADIM; j++) {
+      const p: [number, number] = [lon, guney + ((kuzey - guney) * j) / ADIM]
+      if (!geoContains(u.shape, p)) continue
+      const d = km(p, u.isabet)
+      if (d > enUzakKm) {
+        enUzakKm = d
+        enUzak = p
+      }
+    }
+  }
+  const k = tiklamayiPuanla(u, enUzak, u.anahtar)
+  if (k.konum !== 100 || !k.tam) dusuk.push(`${u.tr} (${Math.round(enUzakKm)}km uzaktan ${k.konum})`)
+}
+ok(dusuk.length === 0, 'her ülkede en uzak iç nokta bile tam isabet + 100 puan', dusuk.slice(0, 5).join(', '))
+
 baslik('Puan tavanı ve tabanı')
 
 esit(toplamPuan(tam, BASLIK_PUAN, 0), 175, 'tam tur 175')
@@ -140,7 +182,7 @@ for (const [k, beklenen] of metinler) {
   ok(m.baslik.length > 0 && m.baslik.includes(turkiye.tr), 'başlık ülke adını içeriyor', m.baslik)
 }
 
-baslik('Başkent seçenekleri (193 ülke × 5 tekrar)')
+baslik('Başkent seçenekleri (194 ülke × 5 tekrar)')
 
 const TEKRAR = 5
 let azSecenek = 0
@@ -187,7 +229,7 @@ const komsuVar = havuz.filter(
 ok(
   komsuVar.length > 100,
   'çoğu ülkede komşu başkenti çeldirici olarak kullanılıyor',
-  `${komsuVar.length}/193 ülke`,
+  `${komsuVar.length}/194 ülke`,
 )
 
 baslik('Körlük ipuçları (kademeli)')
@@ -258,8 +300,33 @@ for (const { i } of ipuclar) {
 esit(negatif, 0, 'düşük puanlı turda bile toplam negatif olmuyor')
 esit(sifirCeza, 0, 'ceza sıfıra düşmüyor')
 
-baslik('Günün ülkesi (deterministik)')
+baslik('Zorluk ağırlığı (Kolay modu)')
 
+/* Ağırlıklar: zorluk 1→5 … 5→1. */
+const enKolay = havuz.find((u) => u.zorluk === 1)!
+const enZor = havuz.find((u) => u.zorluk === 5)!
+esit(zorlukAgirligi(enKolay), 5, 'zorluk 1 → ağırlık 5')
+esit(zorlukAgirligi(enZor), 1, 'zorluk 5 → ağırlık 1')
+esit(agirlikliSecim([enZor]), enZor, 'tek aday her zaman seçilir')
+
+/* İstatistiksel: 5000 seçimde kolay (1-2) ülkeler zor (4-5) ülkelerden
+   belirgin sık gelmeli. Beklenen oran ~48/%28 (ağırlık toplamları
+   250/145); 20 puanlık fark rastgele dalgalanmayla kapanmaz. */
+const ORNEK = 5000
+let kolay = 0
+let zor = 0
+let havuzDisi = 0
+for (let i = 0; i < ORNEK; i++) {
+  const s = agirlikliSecim(havuz)
+  if (s.zorluk <= 2) kolay++
+  if (s.zorluk >= 4) zor++
+  if (!s.havuz) havuzDisi++
+}
+ok(kolay > zor, 'kolay ülkeler zor ülkelerden sık seçiliyor', `${kolay} > ${zor} / ${ORNEK}`)
+ok(kolay > ORNEK * 0.4, 'kolay ülkeler seçimlerin %40ından fazlası', `${kolay}/${ORNEK}`)
+esit(havuzDisi, 0, 'havuz dışı ülke seçilmiyor')
+
+baslik('Günün ülkesi (deterministik)')
 esit(
   gununUlkesi(havuz, new Date(2026, 8, 29, 0, 0)).anahtar,
   gununUlkesi(havuz, new Date(2026, 8, 29, 23, 59)).anahtar,

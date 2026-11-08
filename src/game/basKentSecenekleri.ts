@@ -7,7 +7,7 @@
  * Ada ülkeleri için ikisi de yetmeyebiliyor; o zaman coğrafi yakınlık devreye
  * giriyor (Maldivler ↔ Seyşeller).
  *
- * 193 ülkede elle yazmak imkânsız olduğu için hepsi veriden türetiliyor ve
+ * 194 ülkede elle yazmak imkânsız olduğu için hepsi veriden türetiliyor ve
  * build/test ile doğrulanıyor.
  */
 
@@ -127,9 +127,4 @@ export function secenekUret(hedef: Country, havuz: Country[]): Secenek[] {
 
   secenekler.push({ metin: hedef.bas, dogru: true, zorluk: null, ulke: hedef.tr })
   return karistir(secenekler)
-}
-
-/** Kullanıcının seçtiği seçeneğe göre puan */
-export function secenekPuani(secenek: Secenek | null | undefined): number {
-  return secenek?.dogru ? 50 : 0
 }

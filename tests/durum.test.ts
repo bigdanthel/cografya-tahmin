@@ -73,6 +73,41 @@ esit(nuluAlanlar.tur, 5, 'geçerli alanlar korunuyor')
 esit(Object.keys(nuluAlanlar.dailyGecmisi).length, 0, 'dailyGecmisi:null → boş nesne')
 esit(Object.keys(nuluAlanlar.ulkeBazli).length, 0, 'ulkeBazli:null → boş nesne')
 
+/* YANLIŞ TİPLİ alanlar — JSON.parse kabul eder, yukle() indirger.
+   Eskiden spread ile birlikte taşınıyordu: `puan + puan` string-birleşme
+   ("abc120") ve `undefined + 0 → NaN` üretip arayüzde "NaN tur oynandı"
+   gösteriyordu (2026-11-08 denetimde bulundu, düzeltildi). */
+depo.clear()
+depo.setItem(
+  'cografya.v1',
+  JSON.stringify({ tur: '5', puan: 'abc', seri: NaN, dogru: null, enUzunSeri: [3] }),
+)
+const tipBozuk = yukle()
+esit(tipBozuk.tur, 5, "tur:'5' (string) → sayıya indirgeniyor")
+esit(tipBozuk.puan, 0, "puan:'abc' → varsayılana düşüyor")
+esit(tipBozuk.seri, 0, 'seri:NaN → varsayılana düşüyor')
+esit(tipBozuk.dogru, 0, 'dogru:null → varsayılana düşüyor')
+esit(tipBozuk.enUzunSeri, 0, 'enUzunSeri:[3] (dizi) → varsayılana düşüyor')
+
+depo.clear()
+depo.setItem('cografya.v1', JSON.stringify({ tur: 5, ulkeBazli: { Turkey: 'iptal', Italy: { dogru: '1', toplam: 0 } } }))
+const bozukUlke = yukle()
+ok(
+  Object.keys(bozukUlke.ulkeBazli).length === 1,
+  'ulkeBazli bozuk değeri elip geçerliyi koruyor',
+  JSON.stringify(bozukUlke.ulkeBazli),
+)
+esit(bozukUlke.ulkeBazli['Italy']?.dogru, 1, "dogru:'1' (string) → sayıya indirgeniyor")
+esit(bozukUlke.ulkeBazli['Italy']?.toplam, 0, 'toplam geçerli')
+
+depo.clear()
+depo.setItem('cografya.v1', JSON.stringify({ tur: 1, dailyGecmisi: { '2026-11-08': 'bozuk', '2026-11-07': { ulke: 'Turkey', puan: '90', basarili: 1 } } }))
+const bozukDaily = yukle()
+esit(Object.keys(bozukDaily.dailyGecmisi).length, 1, 'dailyGecmisi bozuk değeri elip geçerliyi koruyor')
+esit(bozukDaily.dailyGecmisi['2026-11-07']?.puan, 90, "daily puan:'90' → sayıya indirgeniyor")
+esit(bozukDaily.dailyGecmisi['2026-11-07']?.basarili, true, 'basarili:1 → boolean')
+esit(bozukDaily.dailyGecmisi['2026-11-07']?.ulke, 'Turkey', 'daily ulke korunuyor')
+
 baslik('Tur istatistikleri')
 
 depo.clear()

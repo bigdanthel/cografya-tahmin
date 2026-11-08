@@ -105,15 +105,15 @@ görünmez. Harita sadece şekiller.
 data/
   raw/                    Natural Earth + world-atlas (indirilmiş, değiştirilmez)
   curated/
-    countries.tr.json     ← elle yazılan 200 ülke kaydı
+    countries.tr.json     ← elle yazılan 201 ülke kaydı
 scripts/
   build-data.mjs          veri pipeline'ı + doğrulama
   test.mjs                test koşucusu (rolldown ile paketler, node'da çalıştırır)
 tests/
   _yardim.ts              küçük doğrulama çerçevesi (ok/esit/toplu/ozet)
-  veri.test.ts            200 ülkenin alan/geometri/bayrak bütünlüğü
+  veri.test.ts            201 ülkenin alan/geometri/bayrak bütünlüğü
   isabet.test.ts          isabet noktası + tam tıklama 100 puan + kırpma
-  tiklanabilirlik.test.ts 193 ülke × 24 rotasyon, sarmalı kutu, limb reddi
+  tiklanabilirlik.test.ts 194 ülke × 24 rotasyon, sarmalı kutu, limb reddi
   oyun.test.ts            puanlama, tolerans, seçenekler, ipuçları
   durum.test.ts           localStorage şeması, seri, yazım toleransı
 src/
@@ -128,7 +128,7 @@ src/
   game/ses.ts             Web Audio sesleri
   components/Globe.tsx    canvas küre: çizim, sürükleme, zoom, tıklama
   App.tsx                 ekranlar ve akış
-public/flags/             193 bayrak SVG (build'de kopyalanır)
+public/flags/             194 bayrak SVG (build'de kopyalanır)
 ```
 
 ---
@@ -146,7 +146,7 @@ public/flags/             193 bayrak SVG (build'de kopyalanır)
    - yinelenen ISO3
 4. Hibrit geometri üretir: 110m'den 177 ülke + 50m'den 64 mikro-ülke.
 5. Hazar Gölü'nü ayrı çıkarır (Natural Earth göl katmanlarında yok).
-6. `flag-icons`'ten 193 bayrağı `public/flags/` altına kopyalar.
+6. `flag-icons`'ten 194 bayrağı `public/flags/` altına kopyalar.
 7. `src/data/world.json` yazar.
 
 ### Neden hibrit geometri?
@@ -171,7 +171,7 @@ olurdu.
 | | Tam (50m) | Küçük (110m) |
 |---|---|---|
 | `world.json` | 1134 KB | 455 KB |
-| Soru havuzu | 193 ülke | 165 ülke |
+| Soru havuzu | 194 ülke | 166 ülke |
 | Oyunlanamayan | — | 28 mikro-ülke |
 | Yakınlaştırmada detay | 50m'ye geçer | 110m'de kalır |
 
@@ -192,10 +192,10 @@ pürüzsüzleşmez. Geri dönmek için `npm run build:data` (env'siz) çalışt�
   "bas": "Ankara",         // zorunlu, doğru cevap
   "kita": "Asya",          // zorunlu
   "komsu": ["GRC","BGR"],  // zorunlu — ISO 3166-1 alpha-3
-  "zorluk": 3,             // zorunlu, 1–5
-  "alt": ["İstanbul"],     // opsiyonel — tam puanla kabul edilen alternatif başkentler
+  "zorluk": 3,             // zorunlu, 1–5 (havuz dışı için 6 = "sorulmaz")
   "kitaAlt": ["Avrupa"],   // opsiyonel — sınır anlaşmazlıkları
-  "bonusAlts": ["Türkiye"],// opsiyonel — %95 puanla kabul edilen yanlış yazımlar
+  // "alt"/"bonusAlts" (alternatif başkent yazımları) küratörde SAKLI tutulur
+  // ama çoktan seçmeli modda runtime'a taşınmaz — serbest yazma modu için.
   "_havuz": false          // opsiyonel — true ise sorulur
 }
 ```
@@ -227,7 +227,7 @@ Tek istisna: `OLCEK=110m` ile mikro-ülkelerin yokluğu hata değil uyarıdır
 ### Bayraklar
 
 Build, `flag-icons` paketindeki 4x3 SVG'leri `public/flags/` altına kopyalar ve
-yolu meta veriye yazar. 193/193 ülkenin bayrağı var. Adlar farklı olduğu için
+yolu meta veriye yazar. 194/194 ülkenin bayrağı var. Adlar farklı olduğu için
 `build-data.mjs` içinde `BAYRAK_TAKMA` tablosu var (Türkiye → "Türkiye",
 Vatikan → "Holy See", vs.).
 
@@ -275,10 +275,10 @@ npm test -- --tip  # sadece tip denetimi
 
 | Dosya | Kapsam | Doğrulama |
 |---|---|---|
-| `tests/veri.test.ts` | 200 ülkenin alan/geometri/bayrak bütünlüğü | 31 |
+| `tests/veri.test.ts` | 201 ülkenin alan/geometri/bayrak/hibrit bütünlüğü | 32 |
 | `tests/isabet.test.ts` | `isabet` noktası, tam tıklama 100 puan, kırpma | 16 |
-| `tests/tiklanabilirlik.test.ts` | 193 ülke × 24 rotasyon, sarmalı kutu, limb | 14 |
-| `tests/oyun.test.ts` | Puanlama, tolerans, seçenekler, ipuçları | 61 |
+| `tests/tiklanabilirlik.test.ts` | 194 ülke × 24 rotasyon, sarmalı kutu, limb | 14 |
+| `tests/oyun.test.ts` | Puanlama, tolerans, seçenekler, ipuçları, zorluk ağırlığı | 72 |
 | `tests/durum.test.ts` | localStorage şeması, seri, yazım toleransı | 77 |
 | | **toplam** | **199** |
 

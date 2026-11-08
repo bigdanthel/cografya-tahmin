@@ -3,13 +3,13 @@ import { Globe } from './components/Globe'
 import { BasKentSecim } from './components/BasKentSecim'
 import { useQuiz } from './game/useQuiz'
 import { MODLAR, adBulAyarla, bugun, type ModTanimi } from './game/types'
-import { sonucMetni, BASLIK_PUAN } from './game/score'
+import { sonucMetni, BASLIK_PUAN, YON_IPUCU_CEZASI } from './game/score'
 import { sesAcikMi, sesiDegistir } from './game/ses'
 import { gununSerisi, dailyPaylasMetni, panoyaKopyala } from './game/storage'
 import { ulkeBul, type Country } from './lib/world'
 
 /* Bayrak modu — gerçek SVG bayraklar.
-   Build sırasında flag-icons paketinden havuzdaki 193 ülkenin 4x3 SVG'si
+   Build sırasında flag-icons paketinden havuzdaki 194 ülkenin 4x3 SVG'si
    `public/flags/` altına kopyalanır, yol meta veriye yazılır. Bundle'a girmez:
    tarayıcı soru başına tek bayrak indirir ve önbelleğe alır.
    (Emoji tablosu daha önce yalnızca 60 ülkeyi kapsıyordu, gerisi boştu.)
@@ -19,13 +19,16 @@ const BAYRAK_EMOJI: Record<string, string> = {
   USA: '🇺🇸', CAN: '🇨🇦', MEX: '🇲🇽', BRA: '🇧🇷', ARG: '🇦🇷', CHN: '🇨🇳', JPN: '🇯🇵',
 }
 
+/* alt/aria-label ülke adını İÇERMEZ — bu, soru aşamasında gösterilen
+   bayrağın cevabı sızdırmasını engeller (görsel yüklenemezse tarayıcı
+   alt metnini gösterir, ekran okuyucu ise onu doğrudan okur). */
 function Bayrak({ ulke }: { ulke: Country }) {
   if (ulke.bayrak) {
     return (
       <img
         className="bayrak-gorsel"
         src={ulke.bayrak}
-        alt={`${ulke.tr} bayrağı`}
+        alt="Bayrak"
         width={132}
         height={99}
         draggable={false}
@@ -33,7 +36,7 @@ function Bayrak({ ulke }: { ulke: Country }) {
     )
   }
   return (
-    <div className="bayrak-gorsel bayrak-emoji" role="img" aria-label={`${ulke.tr} bayrağı`}>
+    <div className="bayrak-gorsel bayrak-emoji" role="img" aria-label="Bayrak">
       {BAYRAK_EMOJI[ulke.iso3] ?? '🏳'}
     </div>
   )
@@ -61,7 +64,17 @@ export default function App() {
   const oyunKimligi = q.mod?.id ?? 'yok'
   useEffect(() => {
     setHedefGoster(null)
-  }, [oyunKimligi, q.sira])
+  }, [oyunKimligi, q.sira, q.oyunNo])
+
+  /* yariKure ("Karşı Yarıküre") ayrı bir efektte: yalnızca YENİ OYUN
+     başladığında sıfırlanır (mod değişince ya da q.oyunNo artınca — bkz.
+     yukarıdaki yoruma benzer, Günün Ülkesi "Tekrar oyna"da mod.id/sira hiç
+     değişmiyor). `q.sira`'yı bağımlılığa katmak turdan tura da tetikleyip
+     kullanıcı hiç dokunmamışken düğmeyi her turda kapatıyordu (küre de
+     buna bağlı olarak her turda gereksiz 180° geri dönüyordu). */
+  useEffect(() => {
+    setYariKure(false)
+  }, [oyunKimligi, q.oyunNo])
 
   /* Klavye: Enter = onayla, Escape = iptal.
      Hook'lar koşulsuz çağrılmalı — bu effect erken return'lardan ÖNCE durmalı.
@@ -202,14 +215,23 @@ export default function App() {
             >
               ◑ Karşı Yarıküre
             </button>
-            <button
-              className="arac-btn"
-              onClick={() => setHedefGoster((h) => (h ? null : s.hedef))}
-              disabled={!s || cevapAsama}
-              title="Hedef ülkeyi bulmanda yardım et"
-            >
-              ◎ Yön İpucu
-            </button>
+            {q.mod?.id !== 'korluk' && (
+              <button
+                className="arac-btn"
+                onClick={() => {
+                  q.yonIpucuBildir()
+                  setHedefGoster((h) => (h ? null : s.hedef))
+                }}
+                disabled={!s || cevapAsama}
+                title={
+                  q.yonIpucuKullanildi
+                    ? `Bu tur için −${YON_IPUCU_CEZASI} puan zaten uygulandı`
+                    : `Hedef ülkeyi göster (−${YON_IPUCU_CEZASI} puan)`
+                }
+              >
+                ◎ Yön İpucu{q.yonIpucuKullanildi ? ` (−${YON_IPUCU_CEZASI})` : ''}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -376,11 +398,12 @@ function CevapAsamasi({ q }: { q: ReturnType<typeof useQuiz> }) {
 
   const sonuc = sonucMetni(k, s.hedef)
   const puan = k.konum + k.kita
-  const tavan = s.basKentSorusu ? 175 : 125
+  // Tavan her modda 175'tir — toplamPuan() bu kırpmayı koşulsuz uygular.
+  const tavan = 175
 
   return (
     <div className="geri">
-      <div className={`geri-bas geri-bas-${sonuc.renk}`}>
+      <div className={`geri-bas geri-bas-${sonuc.renk}`} aria-live="polite">
         <div className="geri-baslik">{sonuc.baslik}</div>
         <div className="geri-alt">
           {k.tam
@@ -420,9 +443,11 @@ function GeriKarti({ q }: { q: ReturnType<typeof useQuiz> }) {
 
   const sonuc = sonucMetni(k, s.hedef)
 
+  const sonTurMu = q.sira + 1 >= q.turSayisi || q.kalanSure === 0
+
   return (
     <div className="geri">
-      <div className={`geri-bas geri-bas-${sonuc.renk}`}>
+      <div className={`geri-bas geri-bas-${sonuc.renk}`} aria-live="polite">
         <div className="geri-baslik">{sonuc.baslik}</div>
         <div className="geri-alt">
           {k.tam
@@ -487,9 +512,7 @@ function GeriKarti({ q }: { q: ReturnType<typeof useQuiz> }) {
 
       <div className="puan-satir">
         <span className={`puan-toplam puan-toplam-${sonuc.renk}`}>{t.toplam}</span>
-        <span style={{ fontSize: 12, color: 'var(--soluk)' }}>
-          / {s.basKentSorusu ? 175 : 125}
-        </span>
+        <span style={{ fontSize: 12, color: 'var(--soluk)' }}>/ 175</span>
         <span className="puan-dagilim">
           {k.konum} konum
           {k.kita > 0 && ` + ${k.kita} kıta`}
@@ -501,7 +524,7 @@ function GeriKarti({ q }: { q: ReturnType<typeof useQuiz> }) {
 
       <div className="geri-eylem">
         <button className="ana-btn" onClick={q.devamEt} autoFocus>
-          Sıradaki →
+          {sonTurMu ? 'Sonuçları gör →' : 'Sıradaki →'}
         </button>
       </div>
     </div>

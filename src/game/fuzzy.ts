@@ -1,23 +1,11 @@
 /**
- * Başkent yazma motoru — normalizasyon + Damerau-Levenshtein.
- *
- * ⚠️ DOSYANIN İKİ YARISI VAR, YALNIZCA BİRİ KULLANILIYOR:
- *
- *   CANLI (basKentSecenekleri.ts çağırıyor):
- *     normalize · mesafe · benzerlik
- *     → başkent çeldiricisi seçerken "yazım benzerliği" ölçütü.
- *
- *   ÖLÜ (serbest yazma modu geri alındığında kaldı, bkz. PLAN.md §6.2):
- *     degerlendir · adayBul · harfIpucu · benzerlikGurultulu
- *     ve bunların tipleri (YargiTuru · Puanlama · CevapGrubu · Aday) +
- *     ESIK_TAM / ESIK_ONAY sabitleri.
- *     İleride bir "Uzman" yazma modu geri eklenirse kullanılabilir; o zamana
- *     kadar silmek de doğru olur. Şimdilik niyet çerçevesi olarak duruyor.
+ * Başkent çeldiricisi seçerken "yazım benzerliği" ölçütü — normalizasyon +
+ * Damerau-Levenshtein (basKentSecenekleri.ts çağırıyor).
  */
 
 /** Türkçe ve yaygın yabancı aksanları ASCII'ye indirger.
  *
- *  Kapsam veriden geliyor: `world.json`'daki 200 ülkenin ad ve başkentlerinde
+ *  Kapsam veriden geliyor: `world.json`'daki 201 ülkenin ad ve başkentlerinde
  *  geçen aksanlı karakterlerin tamamı. Ölçüldü — başlangıçta `í`, `ã`, `õ`
  *  eksikti, bu yüzden `normalize("Brasília")` "brasília" üretiyordu ve
  *  Türkçe yazım "Brasília" ile ASCII "Brasilia" eşleşmiyordu. Çeldirici
@@ -45,11 +33,6 @@ const AKISAN: Record<string, string> = {
 /** Kaldırılan noktalama — "Washington, D.C." → washingtondc */
 const NOKTALAMA = /[.,'"'’´`\-_/\\()[\]{}!?:;*+&%$#@<>|~^°]/g
 
-/** İndeks çıkarımı: "nd4b3n" kastedilmiş olabilir. */
-const SIKLIK: Record<string, string> = {
-  q: 'k', w: 'v', x: 'ks', c: 'k', s: 'z', a: 'e', t: 'd', g: 'j', l: 'i', o: '0', '0': 'o', i: 'l', '1': 'l', j: 'g', b: 'p',
-}
-
 /** Ana normalizasyon. Karşılaştırma öncesi her iki tarafa da uygulanır. */
 export function normalize(s: string): string {
   // Türkçe'nin noktalı I sorunu: 'İ'.toLowerCase() JavaScript'te 'i' + U+0307
@@ -61,19 +44,6 @@ export function normalize(s: string): string {
   // Kalan birleşik aksan işaretlerini at (normalize edilmemiş girişler için)
   out = out.replace(/[̀-ͯ]/g, '')
   return out.replace(NOKTALAMA, '').replace(/\s+/g, '').replace(/ı/g, 'i')
-}
-
-/**
- * Gürültülü yazımlar için normalize varyantı: harf ikamesi.
- * Klavyede yanlış tuşa basıldığında oluşan "indx → indika" gibi hataları yakalar.
- * Not: bu dönüşüm çoğunlukla çift yönlü değildir (q→k, a→e), ama asıl
- * yakalamak istediğimiz hata tipi (kaymış parmak, bitişik harf) zaten
- * Damerau mesafesiyle karşılanıyor.
- */
-function normalizeGurultulu(s: string): string {
-  let out = ''
-  for (const ch of normalize(s)) out += SIKLIK[ch] ?? ch
-  return out
 }
 
 /**
@@ -124,99 +94,4 @@ export function benzerlik(hamA: string, hamB: string): number {
   if (!a.length || !b.length) return 0
   const d = mesafe(a, b)
   return Math.max(0, 1 - d / Math.max(a.length, b.length))
-}
-
-/** Gürültülü yazım katmanıyla da dener (indx → indika). */
-export function benzerlikGurultulu(hamA: string, hamB: string): number {
-  return Math.max(benzerlik(hamA, hamB), benzerlik(normalizeGurultulu(hamA), normalize(hamB)))
-}
-
-// ── Kademeli yargı ────────────────────────────────────────────────────────────
-
-export type YargiTuru = 'tam' | 'yakın' | 'onay' | 'yanlış'
-
-export interface Puanlama {
-  tur: YargiTuru
-  /** 0–1 arası benzerlik */
-  skor: number
-  /** Kullanıcının yazdığı haliyle (düzeltilmiş) doğru cevap */
-  duzeltilmis: string
-  /** Bu cevap bonusAlts'ten mi geldi */
-  bonusMu: boolean
-}
-
-/** Eşikler — plan dokümanındaki tablo. */
-export const ESIK_TAM = 0.85
-export const ESIK_ONAY = 0.65
-
-/** Değerlendirilecek cevap listesi */
-export interface CevapGrubu {
-  bas: string
-  alt: string[]
-  bonusAlts: string[]
-}
-
-/**
- * Bir başkent tahminini puanlar.
- *
- * Tüm kabul edilen cevaplar taranır, en yakın olan seçilir. Böylece kullanıcı
- * "Kolombo" yazdığında Sri Lanka'nın resmî başkenti olmadığı halde doğru sayılır.
- */
-export function degerlendir(hamGirdi: string, grup: CevapGrubu): Puanlama {
-  const hedefler = [grup.bas, ...grup.alt, ...grup.bonusAlts].filter(Boolean)
-  let enIyiSkor = 0
-  let enIyiYazi = grup.bas
-  let bonusMu = false
-
-  for (const aday of hedefler) {
-    const skor = benzerlikGurultulu(hamGirdi, aday)
-    if (skor > enIyiSkor) {
-      enIyiSkor = skor
-      enIyiYazi = aday
-      bonusMu = grup.bonusAlts.includes(aday)
-    }
-  }
-
-  if (enIyiSkor >= 1) return { tur: 'tam', skor: enIyiSkor, duzeltilmis: enIyiYazi, bonusMu }
-  if (enIyiSkor >= ESIK_TAM) return { tur: 'yakın', skor: enIyiSkor, duzeltilmis: enIyiYazi, bonusMu }
-  if (enIyiSkor >= ESIK_ONAY) return { tur: 'onay', skor: enIyiSkor, duzeltilmis: enIyiYazi, bonusMu }
-  return { tur: 'yanlış', skor: enIyiSkor, duzeltilmis: enIyiYazi, bonusMu }
-}
-
-// ── Aday önerisi ──────────────────────────────────────────────────────────────
-
-export interface Aday {
-  ulke: string
-  bas: string
-  iso3: string
-  skor: number
-}
-
-/**
- * Girdiyi TÜM başkentlere karşı arar, en iyi N eşleşmeyi döner.
- * "orbil" → Erbil (%83), Ordu (%60), Oslo (%40)
- */
-export function adayBul(hamGirdi: string, havuz: { anahtar: string; bas: string; alt: string[]; iso3: string }[], adet = 3): Aday[] {
-  const skorlu: Aday[] = []
-  for (const u of havuz) {
-    let enIyi = 0
-    for (const aday of [u.bas, ...u.alt]) {
-      const s = benzerlikGurultulu(hamGirdi, aday)
-      if (s > enIyi) enIyi = s
-    }
-    if (enIyi >= ESIK_ONAY - 0.25) {
-      skorlu.push({ ulke: u.anahtar, bas: u.bas, iso3: u.iso3, skor: enIyi })
-    }
-  }
-  return skorlu.sort((a, b) => b.skor - a.skor).slice(0, adet)
-}
-
-/** Kısmi harf ipucu: "Ankara" → "A _ _ _ _ _" */
-export function harfIpucu(cevap: string, bilinen = 0): string {
-  const n = normalize(cevap)
-  if (bilinen === 0) return `${n[0] ?? '?'} ${'_ '.repeat(Math.max(0, n.length - 1)).trim()}`
-  return n
-    .split('')
-    .map((c, i) => (i < bilinen ? c : '_'))
-    .join(' ')
 }

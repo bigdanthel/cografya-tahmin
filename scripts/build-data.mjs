@@ -30,6 +30,8 @@ const OUT_DIR = join(ROOT, 'src', 'data')
 const OLCEK = process.env.OLCEK ?? '50m'
 /** 110m = küçük varyant (mobil). Mikro-ülkeler topolojide yok, uyarı üretir. */
 const KUCUK_VARIANT = OLCEK === '110m'
+/** Dünya yarıçapı (km) — geoArea (steradyan) → gerçek km² dönüşümü için. */
+const DUNYA_YARICAP_KM = 6371
 
 /**
  * Birden fazla küratör anahtarı tek ülkeyi tarif edebilir (örn. "South Sudan" ≈ "S. Sudan").
@@ -136,7 +138,10 @@ for (const [ad, m] of Object.entries(curated)) {
   // Havuz = soruda sorulabilir. _havuz:false veya _not içinde "havuzda yok" varsa dışarıda.
   const havuz = m._havuz !== false
 
-  // Küratör alanlarını yalnızca beyaz listeye göre taşı (kullanıcı notları çıktıya sızmasın)
+  // Küratör alanlarını yalnızca beyaz listeye göre taşı (kullanıcı notları çıktıya sızmasın).
+  // NOT: `alt`/`bonusAlts` (alternatif başkent yazımları) çoktan seçmeli
+  // modda ÖLÜ veri — runtime'a taşınmıyor. Küratördeki değerler SİLİNMİYOR:
+  // serbest yazma ("Uzman") modu geri gelirse oradan alınacak.
   ulkeler.push({
     anahtar: ad,
     takmaAdlar: Object.entries(AD_ALIAS).filter(([, hedef]) => hedef === ad).map(([k]) => k),
@@ -144,8 +149,6 @@ for (const [ad, m] of Object.entries(curated)) {
     iso: geom.id != null ? String(geom.id) : null,
     tr: m.tr,
     bas: m.bas,
-    alt: m.alt ?? [],
-    bonusAlts: m.bonusAlts ?? [],
     kita: m.kita,
     kitaAlt: m.kitaAlt ?? [],
     komsuRaw: m.komsu ?? [],
@@ -265,9 +268,14 @@ for (const g of gect) {
     b[0].map((n) => Math.round(n * 1e4) / 1e4),
     b[1].map((n) => Math.round(n * 1e4) / 1e4),
   ]
-  // Merkez antipodda mı? (Hawking ülkesi gibi) → oyun kırılır, işaretle
-  u.kutu = [b[1][0] - b[0][0], b[1][1] - b[0][1]]
+  // geoBounds antimeridyeni geçen ülkelerde (Fiji, Rusya, ABD…) batı > doğu
+  // döndürür, ham fark negatif çıkar. Gerçek genişlik "öteki taraftan" ölçülür.
+  let genislik = b[1][0] - b[0][0]
+  if (genislik < 0) genislik += 360
+  u.kutu = [genislik, b[1][1] - b[0][1]]
   u.isabet = isabetNoktasi(f, u.centroid, u.bounds)
+  // Gerçek yüzölçümü (km²) — Körlük modu "Yaklaşık alan" ipucu bunu kullanır.
+  u.alanKm2 = Math.round(Math.abs(geoArea(f)) * DUNYA_YARICAP_KM ** 2)
 }
 
 for (const u of ulkeler) {
@@ -422,7 +430,11 @@ const BAYRAK_TAKMA = {
       continue
     }
     writeFileSync(join(hedef, `${code}.svg`), readFileSync(kaynak))
-    u.bayrak = `/flags/${code}.svg`
+    /* Göreceli yol — mutlak "/flags/..." GitHub Pages alt yoluyla
+       (bigdanthel.github.io/cografya-tahmin/) yayınlanan sitede kökte
+       arar ve 404 verirdi; "flags/..." sayfa konumuna göre çözülür,
+       geliştirme kökte ('/') de barındırma alt yolda da doğrudur. */
+    u.bayrak = `flags/${code}.svg`
     kopyalandi++
   }
   bilgi.push(`Bayrak: ${kopyalandi}/${ulkeler.filter((x) => x.havuz).length} SVG → public/flags/`)

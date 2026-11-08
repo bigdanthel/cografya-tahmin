@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { havuz, type Country } from '../lib/world'
-import { tiklamayiPuanla, toplamPuan, BASLIK_PUAN, type PuanKutusu } from './score'
+import { tiklamayiPuanla, toplamPuan, BASLIK_PUAN, YON_IPUCU_CEZASI, type PuanKutusu } from './score'
 import { secenekUret, type Secenek } from './basKentSecenekleri'
-import { korlukIpuclari, gununUlkesi, type ModTanimi, type Soru, type TurSonucu, type Asama, type Ipucu } from './types'
+import { korlukIpuclari, agirlikliSecim, gununUlkesi, type ModTanimi, type Soru, type TurSonucu, type Asama, type Ipucu } from './types'
 import { ses } from './ses'
 import { yukle, kaydet, turEkle, dailyKaydet, type Istatistik } from './storage'
 
@@ -26,7 +26,6 @@ export interface QuizApi {
   sira: number
   turSayisi: number
   tiklama: [number, number] | null
-  tiklananUlke: Country | null
   /** Tıklama anında hesaplanan konum puanı */
   konumKutusu: PuanKutusu | null
   sonTuru: TurSonucu | null
@@ -46,6 +45,16 @@ export interface QuizApi {
   /** Bu turda toplam ipuç cezası */
   ipucuCezasi: number
   ipucuAl: () => void
+  /** "Yön İpucu" bu turda kullanıldı mı (kalıcı ceza — bkz. yonIpucuBildir) */
+  yonIpucuKullanildi: boolean
+  /** Küreyi hedefe döndüren "Yön İpucu" düğmesine basıldığını bildirir;
+      turda ilk kullanımda kalıcı bir puan cezası uygular. Körlük modunda
+      çağırmadan önce arayüz düğmeyi zaten gizler/kapatır. */
+  yonIpucuBildir: () => void
+  /** Her `baslat()` çağrısında artar — Günün Ülkesi'nde mod.id ve sira
+      "Tekrar oyna"da DEĞİŞMEDİĞİ için (tek soru, hep 0), App.tsx'teki
+      hedefGoster/yariKure sıfırlama efekti bu sayaç olmadan tetiklenmiyordu. */
+  oyunNo: number
   baslat: (mod: ModTanimi) => void
   tikla: (nokta: [number, number], ulke: Country | null, limbde: boolean) => void
   tiklamayiOnayla: () => void
@@ -65,7 +74,6 @@ export function useQuiz(): QuizApi {
   const [sorular, setSorular] = useState<Soru[]>([])
   const [sira, setSira] = useState(0)
   const [tiklama, setTiklama] = useState<[number, number] | null>(null)
-  const [tiklananUlke, setTiklananUlke] = useState<Country | null>(null)
   const [sonTuru, setSonTuru] = useState<TurSonucu | null>(null)
   /** Tıklama anında hesaplanan konum puanı — geri bildirim kartı hemen görünsün */
   const [konumKutusu, setKonumKutusu] = useState<PuanKutusu | null>(null)
@@ -76,6 +84,11 @@ export function useQuiz(): QuizApi {
   const [limbdeUyarisi, setLimbdeUyarisi] = useState(false)
   /** Bu turda açılan ipucu sayısı (Körlük modunda; ilki bedava) */
   const [ipucuAdedi, setIpucuAdedi] = useState(1)
+  /** "Yön İpucu" bu turda kullanıldı mı — kullanılınca kalıcı, ceza turuKapat'ta uygulanır */
+  const [yonIpucuKullanildi, setYonIpucuKullanildi] = useState(false)
+  const yonIpucuKullanildiRef = useRef(false)
+  yonIpucuKullanildiRef.current = yonIpucuKullanildi
+  const [oyunNo, setOyunNo] = useState(0)
 
   // Zamanlayıcı, güncel tur bilgisine erişmesi için ref
   const kalanSureRef = useRef<number | null>(null)
@@ -90,6 +103,9 @@ export function useQuiz(): QuizApi {
      sonra, iki tıklama arasında çalışmaz, yani aynı karede hâlâ `null`
      görünürdü. Doğrudan `turuKapat`/`devamEt` içinde yazılır. */
   const sonTuruRef = useRef<TurSonucu | null>(null)
+  /** Kenar uyarısını kapatan zamanlayıcı — art arda iki kenar tıklamasında
+      ilki ikincinin uyarısını erken kapatmasın diye önceki iptal edilir. */
+  const limbZamanlayiciRef = useRef<number | null>(null)
 
   useEffect(() => {
     kaydet(istatistik)
@@ -109,7 +125,9 @@ export function useQuiz(): QuizApi {
         )
         const kalan = havuz.filter((c) => !gorulen.has(c.anahtar))
         const aday = yeni.length ? yeni : kalan.length ? kalan : havuz
-        return aday[Math.floor(Math.random() * aday.length)]!
+        // Kolay modda zorluk ağırlıklı seçim (kolay ülkeler daha sık);
+        // diğer modlarda uniform — zorluk çeşitliliği oyunun parçası.
+        return secilen.id === 'kolay' ? agirlikliSecim(aday) : aday[Math.floor(Math.random() * aday.length)]!
       }
 
       const gorulen = new Set<string>()
@@ -126,12 +144,13 @@ export function useQuiz(): QuizApi {
       setSira(0)
       setAsama('oyun')
       setTiklama(null)
-      setTiklananUlke(null)
       setKonumKutusu(null)
       setSonTuru(null)
       setTurSonuclari([])
       setKalanSure(secilen.sure ?? null)
       setIpucuAdedi(1)
+      setYonIpucuKullanildi(false)
+      setOyunNo((n) => n + 1)
       sonTuruRef.current = null
     },
     [istatistik],
@@ -143,11 +162,11 @@ export function useQuiz(): QuizApi {
     setSira(0)
     setAsama('oyun')
     setTiklama(null)
-    setTiklananUlke(null)
     setSonTuru(null)
     setTurSonuclari([])
     setKalanSure(null)
     setIpucuAdedi(1)
+    setYonIpucuKullanildi(false)
     sonTuruRef.current = null
   }, [])
 
@@ -161,14 +180,18 @@ export function useQuiz(): QuizApi {
     return () => window.clearInterval(id)
   }, [mod, asama, kalanSure])
 
-  /* Süre dolduğunda oyunu bitir.
+  /* Süre dolduğunda ve oyuncu henüz tıklamamışsa oyunu bitir.
      Sayaç 0'a indiğinde yukarıdaki efekt erken dönüyor ve asama'yı değiştiren
      tek yer turuKapat() içindeydi — o da yalnızca tur TAMAMLANINCA çalışıyor.
      Sonuç: süre bittikten sonra oyun sonsuza dek oynanabiliyordu, üstelik
-     saat rozeti de kayboluyordu. */
+     saat rozeti de kayboluyordu.
+
+     YALNIZCA 'oyun' aşamasındayken zorlar: oyuncu son sorunun cevap kartını
+     ('cevap') okurken zaman dolarsa onu 'sonuc'a fırlatmaz — devamEt() zaten
+     sureBitti'yi görüp oraya geçirir (bkz. turuKapat/devamEt). */
   useEffect(() => {
     if (!mod?.sure || mod.id === 'daily') return
-    if (kalanSure !== 0 || asama === 'sonuc') return
+    if (kalanSure !== 0 || asama !== 'oyun') return
     setAsama('sonuc')
   }, [mod, kalanSure, asama])
 
@@ -183,13 +206,16 @@ export function useQuiz(): QuizApi {
       if (limbde) {
         setLimbdeUyarisi(true)
         ses.kenar()
-        window.setTimeout(() => setLimbdeUyarisi(false), 2200)
+        if (limbZamanlayiciRef.current !== null) window.clearTimeout(limbZamanlayiciRef.current)
+        limbZamanlayiciRef.current = window.setTimeout(() => {
+          limbZamanlayiciRef.current = null
+          setLimbdeUyarisi(false)
+        }, 2200)
         return
       }
       const kutu = tiklamayiPuanla(soru.hedef, nokta, ulke?.anahtar ?? null)
       setKonumKutusu(kutu)
       setTiklama(nokta)
-      setTiklananUlke(ulke)
       ses.tikla()
     },
     [asama, tiklama, soru],
@@ -209,6 +235,13 @@ export function useQuiz(): QuizApi {
     ses.sec()
   }, [asama, soru])
 
+  /* Yön İpucu bir kez kullanılınca ceza kalıcıdır — kapatıp tekrar açmak
+     (kamera zaten gösterildiği için) ek ceza getirmez, ama geri de alınmaz. */
+  const yonIpucuBildir = useCallback(() => {
+    if (asama !== 'oyun' || yonIpucuKullanildiRef.current) return
+    setYonIpucuKullanildi(true)
+  }, [asama])
+
   const gorulenIpuclari = useMemo(
     () => (soru ? soru.ipuclari.slice(0, ipucuAdedi) : []),
     [soru, ipucuAdedi],
@@ -226,9 +259,23 @@ export function useQuiz(): QuizApi {
   const turuKapat = useCallback(
     (basGirdi: string, basPuan: number, basTur: TurSonucu['basKentTur'], kutu: PuanKutusu) => {
       if (!soru || !tiklama) return
-      const sureB = soru.basKentSorusu ? 0 : Math.max(0, Math.round((kalanSureRef.current ?? 0) * 2))
+      /* Çift çağrı koruması — tek bir merkezi yerde: basKentSec, basKentiAtla
+         ve tiklamayiOnayla'nın (başkentsiz modlarda) doğrudan çağırdığı yol
+         AYNI turu iki kez kapatabiliyordu (ölçüldü: senkron 5 tıklama turu
+         iki kez saydı). Fonksiyon senkron olduğu için ikinci çağrı, ilkinin
+         sonTuruRef'i yazmasından SONRA çalışır — burada erken dönmek yeterli. */
+      if (sonTuruRef.current) return
+      /* Süre bonusu yalnızca gerçekten doğru/toleranslı isabette verilir —
+         yanlış bir tıklama bile kalan süreyle ödüllendirilmemeli. */
+      const dogruIsabet = kutu.tam || kutu.toleransli
+      const sureB =
+        soru.basKentSorusu || !dogruIsabet
+          ? 0
+          : Math.max(0, Math.round((kalanSureRef.current ?? 0) * 2))
       const ham = toplamPuan(kutu, basPuan, sureB)
-      const istenen = soru.ipuclari.slice(1, ipucuSayaciRef.current).reduce((t, i) => t + i.maliyet, 0)
+      const istenenIpucu = soru.ipuclari.slice(1, ipucuSayaciRef.current).reduce((t, i) => t + i.maliyet, 0)
+      const istenenYon = yonIpucuKullanildiRef.current ? YON_IPUCU_CEZASI : 0
+      const istenen = istenenIpucu + istenenYon
       /* Ceza ham puanı aşamaz — "ipucu isteyip eksi puan almak" olmamalı.
          Kırpıldığında ekranda ikisi de gösteriliyor, yoksa oyuncu 5 ipuç
          isteyip yalnızca −15 görünce ne olduğunu anlamıyor. */
@@ -244,10 +291,13 @@ export function useQuiz(): QuizApi {
         ham,
         toplam,
         sureBonusu: sureB,
-        ipucuSayisi: Math.max(0, ipucuSayaciRef.current - 1),
+        ipucuSayisi: Math.max(0, ipucuSayaciRef.current - 1) + (yonIpucuKullanildiRef.current ? 1 : 0),
         ipucuMaliyet: istenen,
         ipucuCezasi: ceza,
-        basarili: kutu.tam || kutu.toleransli,
+        /* Toleranslı (komşuya tıklama) kabul PUAN verir ama "tam doğru"
+           sayılmaz: seriyi artırmaz, ülkeyi havuzdan düşürmez — oyuncu
+           ülkeyi gerçekten bilmiş olmuyor. */
+        basarili: kutu.tam,
       }
       setSonTuru(sonuc)
       sonTuruRef.current = sonuc
@@ -258,20 +308,17 @@ export function useQuiz(): QuizApi {
       setTurSonuclari((o) => [...o, sonuc])
       setIstatistik((o) => turEkle(o, soru.hedef.anahtar, sonuc.basarili, toplam))
 
-      const sonTuruMu = sira + 1 >= sorular.length
-      const sureBitti = (kalanSureRef.current ?? 1) <= 0
-      if (sonTuruMu || sureBitti) {
-        setAsama('sonuc')
-        window.setTimeout(() => ses.oyunBitti(), 220)
-      } else {
-        setAsama('cevap')
-        window.setTimeout(
-          () => (kutu.tam || kutu.toleransli ? ses.tolerans() : ses.yanlis()),
-          140,
-        )
-      }
+      /* Sonuç HER ZAMAN önce 'cevap' aşamasında gösterilir — son turda da,
+         Günün Ülkesi'nde de. Oyuncu doğru/yanlış vurgusunu ve puan
+         dağılımını görmeden özet ekranına atlanmıyordu (bkz. devamEt). */
+      setAsama('cevap')
+      window.setTimeout(() => {
+        if (kutu.tam) ses.dogru()
+        else if (kutu.toleransli) ses.tolerans()
+        else ses.yanlis()
+      }, 140)
     },
-    [soru, tiklama, sira, sorular.length, mod],
+    [soru, tiklama, mod],
   )
 
   /** Haritada tıklandı → başkent aşamasına geç (ya da turu direkt kapat) */
@@ -297,7 +344,6 @@ export function useQuiz(): QuizApi {
      küre kilitli kalır ve kullanıcı sıkışır. */
   const tiklamayiIptalEt = useCallback(() => {
     setTiklama(null)
-    setTiklananUlke(null)
     setKonumKutusu(null)
     setSonTuru(null)
     sonTuruRef.current = null
@@ -331,15 +377,26 @@ export function useQuiz(): QuizApi {
     /* Aynı turda birden fazla "Sıradaki" → soru atlanıyordu (ölçüldü:
        senkron 5 tıklama 1'den 6'ya atladı). */
     if (sonTuruRef.current === null) return
+    /* Son soruyu mu kapattık, yoksa süre mi doldu? Cevap kartı (turuKapat)
+       artık HER ZAMAN önce gösterildiği için bu karar buraya taşındı —
+       oyuncu "Sonuçları gör →" ile ilerleyince asıl geçiş burada olur. */
+    const sonTuruMu = sira + 1 >= sorular.length
+    const sureBitti = (kalanSureRef.current ?? 1) <= 0
     sonTuruRef.current = null
     setTiklama(null)
-    setTiklananUlke(null)
     setKonumKutusu(null)
     setSonTuru(null)
     setIpucuAdedi(1)
-    setSira((s) => s + 1)
-    setAsama('oyun')
-  }, [asama])
+    setYonIpucuKullanildi(false)
+    if (sonTuruMu || sureBitti) {
+      setAsama('sonuc')
+      window.setTimeout(() => ses.oyunBitti(), 220)
+    } else {
+      ses.turBitti()
+      setSira((s) => s + 1)
+      setAsama('oyun')
+    }
+  }, [asama, sira, sorular.length])
 
   const bitis = asama === 'sonuc'
 
@@ -354,7 +411,6 @@ export function useQuiz(): QuizApi {
     sira,
     turSayisi,
     tiklama,
-    tiklananUlke,
     konumKutusu,
     sonTuru,
     turSonuclari,
@@ -369,6 +425,9 @@ export function useQuiz(): QuizApi {
     siradakiIpucu,
     ipucuCezasi,
     ipucuAl,
+    yonIpucuKullanildi,
+    yonIpucuBildir,
+    oyunNo,
     baslat,
     tikla,
     tiklamayiOnayla,

@@ -43,7 +43,28 @@ function tipDenetle() {
   return sonuc.status === 0
 }
 
+/* ── Veri hazırlığı ────────────────────────────────────────────────────────
+   `src/data/world.json` build çıktısıdır ve `.gitignore`'dadır — temiz bir
+   klonda YOKTUR. Hem `tsc` (json import çözülemez) hem testler ona ihtiyaç
+   duyar, o yüzden tip denetiminden ÖNCE yoksa üretiyoruz. */
+function veriHazirla() {
+  const dunya = join(KOK, 'src', 'data', 'world.json')
+  if (existsSync(dunya)) return true
+  console.log('── Veri hazırlanıyor (world.json yok → build:data) ────')
+  const sonuc = spawnSync(process.execPath, [join(KOK, 'scripts', 'build-data.mjs')], {
+    cwd: KOK,
+    stdio: 'inherit',
+  })
+  if (sonuc.status !== 0 || !existsSync(dunya)) {
+    console.error('✗ veri üretilemedi — önce `npm run build:data` çalıştırın')
+    return false
+  }
+  console.log('   ✓ world.json üretildi\n')
+  return true
+}
+
 if (sadeceTip) process.exit(tipDenetle() ? 0 : 1)
+if (!veriHazirla()) process.exit(1)
 if (!tipDenetle()) {
   console.error('✗ tip denetimi başarısız — testler çalıştırılmıyor')
   process.exit(1)

@@ -97,9 +97,9 @@ ok(
   tamIsabetler.filter((x) => x.mesafe !== 0).slice(0, 3).map((x) => `${x.ad}:${x.mesafe}km`).join(', '),
 )
 
-/* 8) Toplam: 19300/19300 */
+/* 8) Toplam: 19400/19400 */
 const toplamPuan = tamIsabetler.reduce((t, x) => t + x.puan, 0)
-esit(toplamPuan, havuz.length * 100, 'mükemmel tıklama toplamı 193 ülke × 100')
+esit(toplamPuan, havuz.length * 100, 'mükemmel tıklama toplamı 194 ülke × 100')
 
 baslik('Regresyon: bilinen kötü durumlar')
 

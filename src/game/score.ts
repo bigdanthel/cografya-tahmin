@@ -35,6 +35,10 @@ export const KITA_PUAN_KOMSULU = 15
     KITA_PUAN_KOMSULU'yu kullanıyordu, ayrı sabit eklendi. */
 export const KITA_PUAN_AYNI_KITA = 20
 export const TOLERANS_CARPAN = 0.7
+/** "Yön İpucu" (küreyi hedefe döndür) kullanıldığında düşülen sabit ceza.
+    Onaydan önce konum bilgisi verdiği için serbest bırakılamaz; sabit bir
+    bedeli olmalı (bkz. useQuiz.turuKapat). */
+export const YON_IPUCU_CEZASI = 40
 
 /** İki coğrafi nokta arası yüzey uzaklığı (km) */
 export function kmUzaklik(a: [number, number], b: [number, number]): number {
@@ -48,30 +52,34 @@ export function konumPuani(mesafeKm: number): number {
 
 /**
  * Tıklamayı puanlar.
+ *
+ * TASARIM KARARI: görev "ülkeyi bulmak". Ülke sınırları İÇİNDE her tıklama
+ * 100 konum puanı verir — mesafe eğrisi yalnızca YANLIŞ tıklamalarda kısmi
+ * puan için kullanılır. Eskiden mesafe `isabet` noktasına ölçülüyordu ve
+ * Moskova'ya tıklamak Rusya için ~45 veriyordu (referans nokta Sibirya'da);
+ * oyuncu doğru ülkeyi bulmuşken cezalandırılıyordu.
  * @param tIkNokta kullanıcının tıkladığı [lon, lat]
  * @param tiklananAnahtar tıklamanın düştüğü ülkenin anahtarı (hit layer'dan)
  */
 export function tiklamayiPuanla(hedef: Country, tIkNokta: [number, number], tiklananAnahtar: string | null): PuanKutusu {
-  /* Mesafe `isabet` noktasına ölçülür, `centroid`'e DEĞİL.
-     Centroid alan ağırlıklı olduğu için ada devletlerinde ve uzak topraklı
-     ülkelerde okyanusa düşebiliyordu; ölçüldü: Kiribati'de ülkeye tam
-     tıklama 87 puan getiriyordu, Fransa'da 91. Oyuncu doğru yere tıklıyor,
-     puan düşüyor, sebebi görünmüyordu. */
-  const mesafeKm = kmUzaklik(tIkNokta, hedef.isabet)
-
-  // 1. Doğrudan ülkeye mi tıklandı?
+  // 1. Doğrudan ülkeye mi tıklandı? Ülke içindeyse mesafe 0 sayılır.
   if (tiklananAnahtar && tiklananAnahtar === hedef.anahtar) {
     return {
-      konum: konumPuani(mesafeKm),
+      konum: 100,
       kita: KITA_PUAN_TAM,
       basKent: 0,
       toplam: 0, // başkent puanı sonradan eklenir
       tam: true,
       toleransli: false,
       tiklanan: hedef.tr,
-      mesafeKm: Math.round(mesafeKm),
+      mesafeKm: 0,
     }
   }
+
+  /* Mesafe `isabet` noktasına ölçülür, `centroid`'e DEĞİL (aşağıdaki dallar
+     hedef ülkenin DIŞINDAKİ tıklamalar içindir; orada referans nokta gerekir).
+     Centroid alan ağırlıklı olduğu için ada devletlerinde okyanusa düşebiliyordu. */
+  const mesafeKm = kmUzaklik(tIkNokta, hedef.isabet)
 
   // 2. Toleranslı: komşu ülkeye tıklandı mı? (sınır anlaşmazlıkları)
   const kabul = kabulKumesi(hedef)
@@ -108,21 +116,6 @@ export function tiklamayiPuanla(hedef: Country, tIkNokta: [number, number], tikl
     toleransli: false,
     tiklanan: yanlis?.tr ?? null,
     mesafeKm: Math.round(mesafeKm),
-  }
-}
-
-/** Başkent yazımı için puan: tam → 50, yakın → 40, bonus → 48, yanlış → 0 */
-export function basKentPuani(tur: 'tam' | 'yakın' | 'onay' | 'yanlış', bonusMu: boolean): number {
-  if (bonusMu) return Math.round(BASLIK_PUAN * 0.95)
-  switch (tur) {
-    case 'tam':
-      return BASLIK_PUAN
-    case 'yakın':
-      return Math.round(BASLIK_PUAN * 0.8)
-    case 'onay':
-      return Math.round(BASLIK_PUAN * 0.5)
-    default:
-      return 0
   }
 }
 
