@@ -249,6 +249,20 @@ Sırbistan 50 KB, tek seferlik.)
 
 ---
 
+## Yayım (ücretsiz barındırma)
+
+Site **GitHub Pages** üzerinde ücretsiz yayında:
+**https://bigdanthel.github.io/cografya-tahmin/**
+
+- Kaynak: `origin/main`, yayın içeriği: **`gh-pages` dalı** (yalnızca `dist` + `.nojekyll`).
+- Alt yol barındırmada derleme **TABAN değişkeniyle** yapılmalı: `TABAN=/cografya-tahmin/ npm run build`
+  (yoksa asset URL'leri köke yazar, sayfa boş açılır — Vite'ta `base`).
+- Bayrak yolları **görecelidir** (`flags/*.svg`) — mutlak `/flags/` alt yolda 404 verirdi.
+- Yayım akışı (elle): derle → `dist`'i `gh-pages` dalına it → Pages build'i kendiliğinden itilir.
+  Kaynak değişince yalnız `main`'i itmek yetmez; `gh-pages`'i de yenilemek gerekir.
+
+---
+
 ## Bilinen sınırlar
 
 - **Masaüstü hedefli.** Dokunmatik sürükleme, pinch-zoom ve küçük ekran düzeni
