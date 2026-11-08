@@ -767,6 +767,12 @@ coğrafya-tahmin/
   (ilk kayıt `123` korunuyor, ikinci oynanış üzerine yazmıyor), bayrak SVG
   `/flags/*.svg`, körlük kademeli ipucu, çıkış — konsol hatası 0.
   Kalan tasarım yok değil: puanlama hissi senaryoyla tartışılacak (üstte).
+- [x] **(2026-11-09)** **Ücretsiz yayım — GitHub Pages canlı:**
+  https://bigdanthel.github.io/cografya-tahmin/ (repo `bigdanthel/cografya-tahmin`,
+  kaynak `main`, yayın `gh-pages`). Alt yol için `TABAN` bağımsız `base` + bayrak
+  yollarının göreceli yapılması (mutlak `/flags/` alt yolda 404 veriyordu).
+  Canlı doğrulama: sayfa 200, bayrak `flags/ni.svg` yüklendi, Kolay mod soru
+  gösterdi ("Mısır"), konsol hatası 0. Yayım akışı README "Yayım" bölümünde.
 
 ### Yapılmadı (bilinçli)
 - Mobil/touch arayüzü — hedef masaüstü
