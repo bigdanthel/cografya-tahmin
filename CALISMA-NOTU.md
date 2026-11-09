@@ -114,3 +114,39 @@ Kullanıcı işleri **numaralı sırayla** verir ve sırayı bozmamayı ister
 özetle, sonra **onay beklemeden sıradakine geçme**.
 
 Değişiklik yapmadan önce ölç. "Görünüyor" deme, say.
+
+---
+
+## Oturum durumu — 2026-11-09 kapanışı (compact sonrası için özet)
+
+**Canlı site:** https://bigdanthel.github.io/cografya-tahmin/ ·
+Repo `bigdanthel/cografya-tahmin` (gh CLI bağlı, SSH) · kaynak `main`,
+yayın `gh-pages` dalı (yalnız dist + `.nojekyll`).
+Değişiklik yayınlama akışı: `npm run build:data` → `TABAN=/cografya-tahmin/ npm run build`
+→ `main`'i it → `gh-pages`'i de it (bkz. README "Yayım" bölümü).
+
+**Sağlık (son ölçümler):** `tsc` temiz · 5/5 test dosyası yeşil · `npm audit` 0
+(vite 8.3.6, 2 HIGH `npm audit fix` ile kapandı) · `npm run build` temiz ·
+canlı sitede konsol hatası 0. `git status` temiz, `main` uzakla senkron.
+
+**Bitmiş işler:**
+- 8 Kasım etkileşim turu: tut-çek sürükleme, geodezi kırmızı hat,
+  üç faktörlü bırakış-click koruması, `setPointerCapture` try/catch.
+- 9 Kasım denetim: `yukle()` yanlış-tip koruması (`sayi()`, +12 test vakası;
+  `Number([3])` ve string-birleşme tuzakları kapatıldı), güvenlik grepleri temiz,
+  npm audit 0. Uçtan uca smoke: kolay 10 tur (kayıt tur=10 puan=153),
+  günlük çift oynama-koruması (ilk kayıt korunuyor), bayrak göreceli yol,
+  körlük kademeli ipucu.
+- Günlük seri "başarısız günler de artırır" — **bilinçli Wordle mantığı**,
+  testte belgeli; değiştirme.
+
+**Bekleyen (kullanıcıdan girdi gerekli):**
+1. **Puanlama senaryosu** — kullanıcı "puanlamada sıkıntı var" dedi, somut
+   senaryo vermedi. `score.ts`'e dokunulmadı. Şüpheli örtük kurallar:
+   komşu olmayan yanlış tıklamada konum × 0,2 kırpma; mesafe eğrisinin
+   `isabet` noktasına göre işlemesi. Senaryo gelince önce tartış.
+2. **Hotseat ("arkadaşla sırayla") modu** — kullanıcı uzaktan oynama için
+   ücretsiz siteyi seçti (yapıldı); aynı 10 soruyu tek cihazda sırayla oynatma
+   modunu istiyor mu hâlâ belirsiz. Tasarım sorulacak: aynı ülke sırası,
+   sonda karşılaştırma tablosu; App.tsx'e mod, storage'a oyuncu kaydı gerekir.
+3. Dev sunucu: `npm run dev` → 5180 (şu an kapalı).
