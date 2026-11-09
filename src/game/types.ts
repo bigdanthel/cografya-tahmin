@@ -1,9 +1,13 @@
 import type { Country } from '../lib/world'
+import { havuz } from '../lib/world'
 import type { PuanKutusu } from './score'
 import type { Secenek } from './basKentSecenekleri'
+import { secenekUret } from './basKentSecenekleri'
+import type { BayrakSecenek } from './bayrakSecenekleri'
+import { bayrakSecenekUret } from './bayrakSecenekleri'
 
-/** V1'deki beş mod tek bir Question tipinin varyasyonu. */
-export type Mod = 'kolay' | 'bayrak' | 'korluk' | 'hiz' | 'daily'
+/** V1'deki yedi mod tek bir Question tipinin varyasyonu. */
+export type Mod = 'kolay' | 'basKentin' | 'bayrak' | 'bayragiTani' | 'korluk' | 'hiz' | 'daily'
 
 export interface ModTanimi {
   id: Mod
@@ -25,10 +29,24 @@ export const MODLAR: ModTanimi[] = [
     turSayisi: 10,
   },
   {
+    id: 'basKentin',
+    ad: 'Başkentten Bul',
+    ikon: '◇',
+    aciklama: 'Başkenti gör, ülkeyi bul',
+    turSayisi: 10,
+  },
+  {
     id: 'bayrak',
     ad: 'Bayrağı Bul',
     ikon: '⚑',
     aciklama: 'Bayrağı gör, ülkeyi bul',
+    turSayisi: 10,
+  },
+  {
+    id: 'bayragiTani',
+    ad: 'Bayrağı Tanı',
+    ikon: '⇄',
+    aciklama: 'Ülkeyi bul, bayrağını seç',
     turSayisi: 10,
   },
   {
@@ -59,8 +77,8 @@ export const MODLAR: ModTanimi[] = [
    `zorluk` alanı soru seçiminde kullanılmıyordu — Kolay modda zorluk 5
    Mikronezya ile zorluk 1 Türkiye aynı olasılıkla geliyordu. Kolay modda
    seçim artık ağırlıklı: kolay ülkeler daha sık sorulur. Diğer modlar
-   (Bayrak/Körlük/Hız) bilinçli olarak uniform kalır — orada zorluk
-   çeşitliliği oyunun parçası. */
+   (Başkentten Bul/Bayrağı Bul/Bayrağı Tanı/Körlük/Hız) bilinçli olarak
+   uniform kalır — orada zorluk çeşitliliği oyunun parçası. */
 
 /** Seçim ağırlığı: zorluk 1→5 … 5→1. Havuz dışı (6) aday listesine girmez. */
 export function zorlukAgirligi(u: Country): number {
@@ -79,17 +97,53 @@ export function agirlikliSecim(adaylar: Country[]): Country {
   return adaylar[adaylar.length - 1]!
 }
 
+/** Mod kimliğine göre bir ülke için soru üretir — saf fonksiyon (test edilebilir).
+ *
+ *  useQuiz.ts'den buraya taşındı: React'e bağımsız olduğu için test paketi
+ *  react'i paketlemeden mod bağlantısını doğrulayabilir. */
+export function soruUret(u: Country, modId: string): Soru {
+  const ipucu: Soru['ipucu'] =
+    modId === 'korluk'
+      ? 'yok'
+      : modId === 'bayrak'
+        ? 'bayrak'
+        : modId === 'basKentin'
+          ? 'bas'
+          : 'ad'
+  /* Bayrağı Tanı: ikinci soru BAYRAK seçimidir, başkent sorusu yok.
+     Başkentten Bul: başkent zaten verildiği için ikinci soru yoktur —
+     kullanıcının işi "başkentten ülkeyi bulmak". Başkent sorusu yalnızca
+     Kolay ve Bayrağı Bul'da sorulur (olumlu tanım — else zinciriyle
+     'basKentin'i dışlamayı unutmak yerine). */
+  const bayrakSorusu = modId === 'bayragiTani'
+  const basKentSorusu = modId === 'kolay' || modId === 'bayrak'
+  return {
+    hedef: u,
+    ipucu,
+    ipuclari: modId === 'korluk' ? korlukIpuclari(u) : [],
+    basKentSorusu,
+    bayrakSorusu,
+    // Seçenekler soru oluşturulurken hazırlanır; yeniden render'da değişmez
+    secenekler: basKentSorusu ? secenekUret(u, havuz) : [],
+    bayrakSecenekleri: bayrakSorusu ? bayrakSecenekUret(u, havuz) : [],
+  }
+}
+
 export interface Soru {
   hedef: Country
   /** Bu soruda ne gösterilir */
-  ipucu: 'ad' | 'bayrak' | 'yok'
+  ipucu: 'ad' | 'bayrak' | 'bas' | 'yok'
   /** Körlük modunda kullanıcıya verilecek ipuçları — en ucuzdan pahalıya,
       sırayla açılır (ilk olan bedava) */
   ipuclari: Ipucu[]
   /** Başkent sorusu sorulacak mı */
   basKentSorusu: boolean
+  /** Bayrağı Tanı modunda: onaydan sonra 5 bayraktan doğru olanı seçilir */
+  bayrakSorusu: boolean
   /** 5 seçenek; 3'ü kasıtlı olarak zor (komşu ülke / benzer yazım / coğrafi yakınlık) */
   secenekler: Secenek[]
+  /** Bayrağı Tanı modunda 5 bayrak seçeneği; aksi halde boş */
+  bayrakSecenekleri: BayrakSecenek[]
 }
 
 export type Asama = 'oyun' | 'cevap' | 'sonuc'
@@ -99,6 +153,9 @@ export interface TurSonucu {
   ulke: Country
   tiklama: [number, number] | null
   kutu: PuanKutusu
+  /* İkinci sorunun sonucu. Başkent modlarında girdi = yazılan/verilen
+     başkent adı; Bayrağı Tanı'da girdi = seçilen bayrağın ÜLKENİN adı.
+     (Alan adları tarihsel — iki mod aynı akışı paylaşır.) */
   basKentGirdi: string | null
   basKentPuan: number
   basKentTur: 'tam' | 'yanlış' | 'bos'

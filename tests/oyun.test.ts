@@ -20,7 +20,8 @@ import {
   TOLERANS_CARPAN,
 } from '../src/game/score'
 import { secenekUret } from '../src/game/basKentSecenekleri'
-import { korlukIpuclari, agirlikliSecim, zorlukAgirligi, adBulAyarla, gununUlkesi } from '../src/game/types'
+import { bayrakSecenekUret } from '../src/game/bayrakSecenekleri'
+import { korlukIpuclari, agirlikliSecim, zorlukAgirligi, adBulAyarla, gununUlkesi, soruUret, MODLAR } from '../src/game/types'
 import { baslik, ok, esit, toplu, bitir } from './_yardim'
 
 adBulAyarla((a) => ulkeBul(a)?.tr)
@@ -338,5 +339,118 @@ ok(
   gununUlkesi(havuz, new Date(2026, 8, 29)).anahtar !== gununUlkesi(havuz, new Date(2026, 8, 30)).anahtar,
   'ardışık günler farklı ülke (çoğunlukla)',
 )
+
+baslik('Bayrağı Tanı: bayrak seçenekleri (194 ülke × 5 tekrar)')
+
+/* BasKentSecenekleri ile aynı sözleşmeyi güvenceye alır: her soruda tam 5
+   bayrak, 1 doğru, tekrar yok, hepsi gerçek SVG (havuzda 194/194 dolu). */
+const B_TEKRAR = 5
+let bAzSecenek = 0
+let bCevapsiz = 0
+let bCokluDogru = 0
+let bTekrarUlke = 0
+let bTekrarYol = 0
+let bBayraksizSecenek = 0
+let bHedefUyumsuz = 0
+
+for (const u of havuz) {
+  for (let t = 0; t < B_TEKRAR; t++) {
+    const s = bayrakSecenekUret(u, havuz)
+    if (s.length !== 5) bAzSecenek++
+    const dogru = s.filter((x) => x.dogru)
+    if (dogru.length === 0) bCevapsiz++
+    if (dogru.length > 1) bCokluDogru++
+    if (new Set(s.map((x) => x.ulke)).size !== s.length) bTekrarUlke++
+    if (new Set(s.map((x) => x.bayrak)).size !== s.length) bTekrarYol++
+    if (s.some((x) => !x.bayrak)) bBayraksizSecenek++
+    /* İç tutarlılık: "doğru" işaretli seçenek hedefin KENDİ bayrağı olmalı. */
+    if (dogru[0] && dogru[0].ulke !== u.tr) bHedefUyumsuz++
+  }
+}
+esit(bAzSecenek, 0, 'her zaman tam 5 bayrak seçeneği')
+esit(bCevapsiz, 0, 'doğru bayrak her zaman seçeneklerde')
+esit(bCokluDogru, 0, 'tam olarak 1 doğru bayrak')
+esit(bTekrarUlke, 0, 'seçenek ülkeleri tekrar etmiyor')
+esit(bTekrarYol, 0, 'seçenek bayrak yolları tekrar etmiyor')
+esit(bBayraksizSecenek, 0, 'bayraksız seçenek yok (194/194 SVG)')
+esit(bHedefUyumsuz, 0, '"doğru" işaretli seçenek hedefin kendisi')
+
+/* Komşu çeldirici ilkeliği: havuzda çözümlenen ≥3 komşusu olan ülkenin
+   3 yanıltıcısının tamamı komşudan gelir. Havuz DIŞI komşu (ör. Batı
+   Sahra) sayaçta hesaba katılmaz — üretici onları bilinçli olarak atlar
+   (bayraksız olabildikleri için). */
+const havuzAnahtarlari = new Set(havuz.map((c) => c.anahtar))
+const komsuZengin = havuz.filter(
+  (u) => u.komsu.filter((k) => havuzAnahtarlari.has(k)).length >= 3,
+)
+const komsuAz = komsuZengin.filter(
+  (u) => bayrakSecenekUret(u, havuz).filter((x) => !x.dogru && x.zorluk === 'komsu').length !== 3,
+)
+ok(
+  komsuAz.length === 0,
+  '≥3 havuzlu komşusu olan her ülkede 3 çeldirici komşudan',
+  `${komsuZengin.length} ülkede ${komsuAz.length} sapma`,
+)
+
+/* Ada güvenlik ağı: komşusu çözümlenmeyen ülkenin 3 "zor" çeldiricisi aynı
+   kıtadan doldurulmalı. 4. çeldirici TASARIM gereği hep 'rastgele' (başkent
+   seçeneklerindeki 3 zor + 1 rastgele düzeni aynı). */
+const ada = ulkeBul('Madagascar')!
+ok(
+  ada.komsu.filter((k) => havuzAnahtarlari.has(k)).length === 0,
+  'test önkoşulu: Madagaskar havuzda komşusuz',
+)
+const adaSecenekleri = bayrakSecenekUret(ada, havuz)
+const adaYanlislar = adaSecenekleri.filter((x) => !x.dogru)
+ok(
+  adaYanlislar.filter((x) => x.zorluk !== 'rastgele').every((x) => x.zorluk === 'kita') &&
+    adaYanlislar.filter((x) => x.zorluk === 'rastgele').length === 1,
+  'komşusuz adada 3 zor çeldirici aynı kıta, 1 rastgele',
+  adaYanlislar.map((x) => x.zorluk).join(', '),
+)
+
+baslik('Mod bağlantısı (soruUret)')
+
+esit(MODLAR.length, 7, `yedi mod kayıtlı (${MODLAR.map((m) => m.id).join(' · ')})`)
+const beklenenModlar = ['kolay', 'basKentin', 'bayrak', 'bayragiTani', 'korluk', 'hiz', 'daily'] as const
+const modIds = new Set(MODLAR.map((m) => m.id))
+for (const id of beklenenModlar) {
+  ok(modIds.has(id), `mod kayıtlı: ${id}`)
+}
+ok(
+  MODLAR.every((m) => m.turSayisi > 0 && m.ad.trim() !== '' && m.ikon.trim() !== '' && m.aciklama.trim() !== ''),
+  'her modda ad/ikon/açıklama dolu',
+)
+
+const kolaySoru = soruUret(turkiye, 'kolay')
+esit(kolaySoru.ipucu, 'ad', 'Kolay: ülke adı gösterilir')
+esit(kolaySoru.basKentSorusu, true, 'Kolay: başkent sorusu var')
+esit(kolaySoru.bayrakSorusu, false, 'Kolay: bayrak sorusu yok')
+esit(kolaySoru.secenekler.length, 5, 'Kolay: 5 başkent seçeneği')
+esit(kolaySoru.bayrakSecenekleri.length, 0, 'Kolay: bayrak seçeneği yok')
+
+const basSoru = soruUret(turkiye, 'basKentin')
+esit(basSoru.ipucu, 'bas', 'Başkentten Bul: başkent adı gösterilir')
+esit(basSoru.basKentSorusu, false, 'Başkentten Bul: başkent SORUSU yok (başkent verildi)')
+esit(basSoru.secenekler.length, 0, 'Başkentten Bul: başkent seçeneği yok')
+esit(basSoru.bayrakSorusu, false, 'Başkentten Bul: bayrak sorusu yok')
+esit(basSoru.bayrakSecenekleri.length, 0, 'Başkentten Bul: bayrak seçeneği yok')
+esit(basSoru.hedef.bas, turkiye.bas, 'gösterilen başkent hedefin başkenti')
+
+const taniSoru = soruUret(turkiye, 'bayragiTani')
+esit(taniSoru.ipucu, 'ad', 'Bayrağı Tanı: ülke adı gösterilir')
+esit(taniSoru.basKentSorusu, false, 'Bayrağı Tanı: başkent sorusu yok')
+esit(taniSoru.bayrakSorusu, true, 'Bayrağı Tanı: bayrak sorusu var')
+esit(taniSoru.secenekler.length, 0, 'Bayrağı Tanı: başkent seçeneği yok')
+esit(taniSoru.bayrakSecenekleri.length, 5, 'Bayrağı Tanı: 5 bayrak seçeneği')
+ok(
+  taniSoru.bayrakSecenekleri.some((x) => x.dogru && x.ulke === turkiye.tr),
+  'doğru bayrak hedefin ülkesine ait',
+)
+
+esit(soruUret(turkiye, 'bayrak').ipucu, 'bayrak', 'Bayrağı Bul: bayrak gösterilir')
+esit(soruUret(turkiye, 'bayrak').basKentSorusu, true, 'Bayrağı Bul: başkent sorusu sürüyor')
+esit(soruUret(turkiye, 'korluk').ipucu, 'yok', 'Körlük: gösterge yok')
+esit(soruUret(turkiye, 'hiz').basKentSorusu, false, 'Süreli Hız: başkent sorusu yok')
 
 bitir()

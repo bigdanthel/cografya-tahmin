@@ -39,7 +39,7 @@ uygulama sırasında neden değiştiğini kayda geçirir. Yeni kararlar buraya e
 | Başkent girişi | **5 seçenekli çoktan seçmeli**, 3'ü kasıtlı zor | Değişti, bkz. §6.2 |
 | Soru havuzu | 194 kayıt (küratörde 201; 7'si havuz dışı). **Tuvalu'nun geometrisi topolojide yok** — tam "193 bağımsız devlet" değil | Uygulandı |
 | Sınır anlaşmazlıkları | Tolerantlı — komşu ülkeye tıklamak da kabul (×0.7), ama artık **"tam doğru" sayılmaz** (seri/istatistik/havuzdan düşme etkilenmez) | Düzeltildi (2026-09-30) |
-| V1 modları | Kolay · Bayrağı Bul · Körlük · Süreli Hız · Günün Ülkesi | Uygulandı |
+| V1 modları | Kolay · Başkentten Bul · Bayrağı Bul · Bayrağı Tanı · Körlük · Süreli Hız · Günün Ülkesi | İkisi 2026-11-09'da eklendi, bkz. §5 |
 | Körlük ipuçları | **Kademeli**: ilki bedava, her biri 6–30 puan düşer | Uygulandı |
 | Bayrak görselleri | `flag-icons` 4x3 SVG → `public/flags/` (build kopyalar) | Uygulandı |
 | Ses | Web Audio ile üretilen tonlar, harici dosya yok, aç/kapa düğmesi | Uygulandı |
@@ -385,7 +385,9 @@ oyun ──tıkla──▶ onaylı değil: [✓ Onayla] [✕ Vazgeç]
 | Mod | Tur | Süre | Notlar |
 |---|---|---|---|
 | **Kolay** | 10 | — | Ad + başkent seçimi |
+| **Başkentten Bul** | 10 | — | **(2026-11-09)** Soru BAŞKENT adıdır (`bas` gösterilir); ülke bulunur, **başkent sorusu yok** (başkent zaten verildi — ikinci sorulu akıştan istisna). Tavan yine 175 verilir (konum 100 + kıta 25; gerçek tavan 125 — 'hiz' modeliyle aynı) |
 | **Bayrağı Bul** | 10 | — | Gerçek SVG bayrak (`public/flags/`, 194/194) |
+| **Bayrağı Tanı** | 10 | — | **(2026-11-09)** Bayrağı Bul'un tersi: ad verilir + bulunan ülkenin **5 bayraktan doğru olanı seçilir** (+50). Çeldiriciler: **komşu bayrakları** → aynı kıta → rastgele (bayrakSecenekleri.ts) |
 | **Körlük** | 8 | — | Kademeli ipuçlar (§4.2), her biri puandan düşer |
 | **Süreli Hız** | 20 | 60 sn | Başkent sorusu **yok**; süre bitince tur kapanır |
 | **Günün Ülkesi** | 1 | — | Tarih hash'i → deterministik ülke · seri takip edilir |
@@ -773,6 +775,30 @@ coğrafya-tahmin/
   yollarının göreceli yapılması (mutlak `/flags/` alt yolda 404 veriyordu).
   Canlı doğrulama: sayfa 200, bayrak `flags/ni.svg` yüklendi, Kolay mod soru
   gösterdi ("Mısır"), konsol hatası 0. Yayım akışı README "Yayım" bölümünde.
+- [x] **(2026-11-09)** **İki yeni mod: Başkentten Bul + Bayrağı Tanı.**
+  *Başkentten Bul* — `Soru.ipucu` yeni değeri `'bas'`; soru kartında ülke adı
+  yerine başkent adı büyük gösterilir; onay sonrası TIKLAMA direkt turu kapatır
+  (başkent sorusu olmadığı için). 194 başkentin tekliği build verisinde ölçülerek
+  doğrulandı (çakışan başkent yok → soru tek anlamlı).
+  *Bayrağı Tanı* — `Soru.bayrakSorusu` + `bayrakSecenekleri`; onay sonrası
+  bayrak şeridi (5 sütun, SVG img `alt="Bayrak"` ülke adı İÇERMEZ). Çeldirici
+  hiyerarşisi ölçülmüş veriyle kuruldu: komşu bayrakları (109 ülkenin ≥3 havuzlu
+  komşusu var; 3 çeldiricinin tamamı komşudan), komşusuz adaların çeldiricileri
+  tamamıyla aynı kıtadan gelir, son (4.) çeldirici tasarım gereği rastgele. *Bilinçli kısaltma:* renk tabanlı
+  benzer-bayrak çeldiricisi (Çad↔Romanya) yok — ileride build'e SVG renk imzası
+  eklenebilir. `soruUret` useQuiz'ten types.ts'e taşındı (React'siz test edilebilirlik);
+  `TurSonucu.basKentGirdi` iki soruyu (başkent metni veya seçilen bayrağın ülke
+  adı) ikisini tek akışta taşır — alan adları tarihsel. `soruUret`'te negatif
+  zincirle 'basKentin'i dışlamak başlangıçta
+  unutuldu — kalıcı test yakaladı (başkent sorusu hepsinde "true" çıkıyordu);
+  olumlu tanıma (`kolay|bayrak`) çevrildi.
+  *Doğrulama:* `npm test` 263/263 (önce 211); tarayıcı smoke: Başkentten Bul 4
+  tur (Karakas→Venezuela 125/175; Monako toleranslı 84; Podgorica→Karadağ
+  125; Kingstown 20 — hedef adaya 26 km), Bayrağı Tanı 4 tur (Tanzanya
+  175/175 tavan; çeldirici örnek: RW/BI/UG komşulardan; Fildişi Sahili yanlış
+  bayrak seçimi "sen: Gana +0"; Nikaragua kenar reddi devrede; "Bayrağı atla"
+  "seçilmedi +0"); kayıt 9 tur/670 puan tutarlı; konsol hatası 0; canlı
+  yayına da alındı (aşağıda).
 
 ### Yapılmadı (bilinçli)
 - Mobil/touch arayüzü — hedef masaüstü

@@ -54,7 +54,9 @@ Klavye: `Enter` onaylar, `Esc` tıklamayı iptal eder.
 | Mod | Tur | Ne yapar |
 |---|---|---|
 | **Kolay** | 10 | Ülke adı verilir, haritada bulursun |
+| **Başkentten Bul** | 10 | Başlangıç sorusu başkentin adıdır ("Nuuk" hangi ülkenin?) — şıkkı kürede ararsın, başkent sorusu yok |
 | **Bayrağı Bul** | 10 | Gerçek SVG bayrak gösterilir |
+| **Bayrağı Tanı** | 10 | Ülkenin adı verilir; kürede bulduktan sonra 5 bayraktan doğru olanı seçersin (Bayrağı Bul'un tersi) |
 | **Körlük** | 8 | İsim yok. İpuçları **kademeli** açılır, her biri puandan düşer |
 | **Süreli Hız** | 20 | 60 saniyede bulabildiğin kadar |
 | **Günün Ülkesi** | 1 | Her gün aynı ülke. Seri takip edilir, panoya kopyalanabilir |
@@ -65,7 +67,8 @@ Klavye: `Enter` onaylar, `Esc` tıklamayı iptal eder.
 |---|---|
 | Konum | 0–100 (4000 km'de üstel düşüş) |
 | Kıta | 25 (tam isabet) · 20 (doğru kıta, yanlış ülke) · 15 (komşu ülkede) |
-| Başkent | 50 |
+| Başkent | 50 (Kolay · Bayrağı Bul) |
+| Bayrak | 50 (yalnız Bayrağı Tanı) |
 | Süre (yalnız Süreli Hız) | kalan saniye × 2 |
 | İpucu (yalnız Körlük) | her ipucu 6–30 puan düşer |
 
@@ -119,9 +122,10 @@ tests/
 src/
   lib/world.ts            world.json'u çözer, sorgular
   lib/projection.ts       küre matematiği (uzaklık, merkez, sarmalı kutu)
-  game/types.ts           mod tanımları, Körlük ipuçları, günün ülkesi
+  game/types.ts           mod tanımları, soru üretimi, Körlük ipuçları, günün ülkesi
   game/score.ts           puanlama
   game/basKentSecenekleri.ts  5 seçenek + zor çeldiriciler
+  game/bayrakSecenekleri.ts   Bayrağı Tanı: komşu/kıta çeldiriciler
   game/fuzzy.ts           normalizasyon + Damerau-Levenshtein
   game/useQuiz.ts         oyun durum makinesi
   game/storage.ts         localStorage, seri hesabı

@@ -1,23 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { havuz, type Country } from '../lib/world'
 import { tiklamayiPuanla, toplamPuan, BASLIK_PUAN, YON_IPUCU_CEZASI, type PuanKutusu } from './score'
-import { secenekUret, type Secenek } from './basKentSecenekleri'
-import { korlukIpuclari, agirlikliSecim, gununUlkesi, type ModTanimi, type Soru, type TurSonucu, type Asama, type Ipucu } from './types'
+import { type Secenek } from './basKentSecenekleri'
+import { agirlikliSecim, gununUlkesi, soruUret, type ModTanimi, type Soru, type TurSonucu, type Asama, type Ipucu } from './types'
+import type { BayrakSecenek } from './bayrakSecenekleri'
 import { ses } from './ses'
 import { yukle, kaydet, turEkle, dailyKaydet, type Istatistik } from './storage'
-
-function soruUret(u: Country, modId: string): Soru {
-  const ipucu: Soru['ipucu'] = modId === 'korluk' ? 'yok' : modId === 'bayrak' ? 'bayrak' : 'ad'
-  const basKentSorusu = modId !== 'hiz'
-  return {
-    hedef: u,
-    ipucu,
-    ipuclari: modId === 'korluk' ? korlukIpuclari(u) : [],
-    basKentSorusu,
-    // Seçenekler soru oluşturulurken hazırlanır; yeniden render'da değişmez
-    secenekler: basKentSorusu ? secenekUret(u, havuz) : [],
-  }
-}
 
 export interface QuizApi {
   asama: Asama
@@ -60,10 +48,13 @@ export interface QuizApi {
   tiklamayiOnayla: () => void
   /** Tıklamayı geri al, oyun aşamasına dön, yeniden seçime izin ver */
   tiklamayiIptalEt: () => void
-  /** Başkent sorusunu atla, turu kapat (konum puanı korunur) */
+  /** Başkent sorusunu atla, turu kapat (konum puanı korunur).
+      Bayrağı Tanı modunda "Bayrağı atla" düğmesi de bunu çağırır. */
   basKentiAtla: () => void
   /** Başkent seçeneği seçildi (çoktan seçmeli) */
   basKentSec: (secenek: Secenek) => void
+  /** Bayrağı Tanı modunda bayrak seçeneği seçildi (çoktan seçmeli) */
+  bayrakSec: (secenek: BayrakSecenek) => void
   devamEt: () => void
   cikis: () => void
 }
@@ -259,11 +250,12 @@ export function useQuiz(): QuizApi {
   const turuKapat = useCallback(
     (basGirdi: string, basPuan: number, basTur: TurSonucu['basKentTur'], kutu: PuanKutusu) => {
       if (!soru || !tiklama) return
-      /* Çift çağrı koruması — tek bir merkezi yerde: basKentSec, basKentiAtla
-         ve tiklamayiOnayla'nın (başkentsiz modlarda) doğrudan çağırdığı yol
-         AYNI turu iki kez kapatabiliyordu (ölçüldü: senkron 5 tıklama turu
-         iki kez saydı). Fonksiyon senkron olduğu için ikinci çağrı, ilkinin
-         sonTuruRef'i yazmasından SONRA çalışır — burada erken dönmek yeterli. */
+      /* Çift çağrı koruması — tek bir merkezi yerde: basKentSec, bayrakSec,
+         basKentiAtla ve tiklamayiOnayla'nın (ikinci sorusuz modlarda)
+         doğrudan çağırdığı yol AYNI turu iki kez kapatabiliyordu
+         (ölçüldü: senkron 5 tıklama turu iki kez saydı). Fonksiyon senkron
+         olduğu için ikinci çağrı, ilkinin sonTuruRef'i yazmasından SONRA
+         çalışır — burada erken dönmek yeterli. */
       if (sonTuruRef.current) return
       /* Süre bonusu yalnızca gerçekten doğru/toleranslı isabette verilir —
          yanlış bir tıklama bile kalan süreyle ödüllendirilmemeli. */
@@ -321,18 +313,21 @@ export function useQuiz(): QuizApi {
     [soru, tiklama, mod],
   )
 
-  /** Haritada tıklandı → başkent aşamasına geç (ya da turu direkt kapat) */
+  /** Haritada tıklandı → başkent/bayrak aşamasına geç (ya da turu direkt kapat) */
   const tiklamayiOnayla = useCallback(() => {
     if (!soru || !tiklama || !konumKutusu) return
-    if (!soru.basKentSorusu) {
+    /* İkinci sorusu olmayan modlarda (Süreli Hız, Başkentten Bul) tur direkt
+       kapanır; başkent (Kolay/Bayrağı Bul) ya da bayrak (Bayrağı Tanı)
+       sorusu olanlarda cevap aşamasına geçilir, şıklar orada seçilir. */
+    if (!soru.basKentSorusu && !soru.bayrakSorusu) {
       turuKapat('', 0, 'bos', konumKutusu)
     } else {
       setAsama('cevap')
     }
   }, [soru, tiklama, konumKutusu, turuKapat])
 
-  /* Başkent sorusunu atla — konum puanı alınmış durumda, kullanıcı devam
-     etmek isteyebilir. Başkent puanı 0 kalır (doğru bir ceza değil,
+  /* Başkent/bayrak sorusunu atla — konum puanı alınmış durumda, kullanıcı
+     devam etmek isteyebilir. İkinci soru puanı 0 kalır (doğru bir ceza değil,
      soruyu cevaplamamanın bedeli). */
   const basKentiAtla = useCallback(() => {
     if (!soru || !tiklama || !konumKutusu) return
@@ -364,6 +359,24 @@ export function useQuiz(): QuizApi {
       if (sonTuruRef.current) return
       turuKapat(
         secenek.metin,
+        secenek.dogru ? BASLIK_PUAN : 0,
+        secenek.dogru ? 'tam' : 'yanlış',
+        konumKutusu,
+      )
+    },
+    [soru, konumKutusu, turuKapat],
+  )
+
+  // ── Bayrak değerlendir (Bayrağı Tanı modu) ─────────────────────────────
+  /* basKentSec ile aynı sözleşme ve aynı çift tıklama koruması.
+     Fark: seçilen metin yerine seçeneğin ÜLKE ADI ikinci soru girdisine
+     yazılır — sonuç kartı "sen: X" ile hangi bayrağı seçtiğini gösterir. */
+  const bayrakSec = useCallback(
+    (secenek: BayrakSecenek) => {
+      if (!soru || !konumKutusu || soru.bayrakSecenekleri.length === 0) return
+      if (sonTuruRef.current) return
+      turuKapat(
+        secenek.ulke,
         secenek.dogru ? BASLIK_PUAN : 0,
         secenek.dogru ? 'tam' : 'yanlış',
         konumKutusu,
@@ -434,6 +447,7 @@ export function useQuiz(): QuizApi {
     tiklamayiIptalEt,
     basKentiAtla,
     basKentSec,
+    bayrakSec,
     devamEt,
     cikis,
   }

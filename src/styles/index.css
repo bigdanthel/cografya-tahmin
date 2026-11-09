@@ -281,6 +281,43 @@ button:disabled { cursor: not-allowed; }
 .bks-yanlis { border-color: var(--vurgu); background: #fbeeec; color: var(--vurgu); }
 .bks-yanlis .bks-harf { background: var(--vurgu); border-color: var(--vurgu); color: #fff; }
 
+/* ── Bayrak çoktan seçmeli (Bayrağı Tanı modu) ────────────────────────── */
+
+/* BasKentSecim ile aynı vurgu dili, görsel şıklar: 5 sütunlu ızgara.
+   ALT metin jeneriktir ("Bayrak") — ülke adı sızmasın diye. */
+.bayrak-sec {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+.bayrak-secenek {
+  position: relative;
+  display: grid; place-items: center;
+  padding: 8px 4px; min-height: 44px;
+  border: 1px solid var(--kenar2); background: var(--zemin);
+  border-radius: 9px;
+  transition: all 0.12s ease;
+}
+.bayrak-secenek:hover:not(:disabled) { background: var(--zemin2); border-color: var(--soluk); }
+.bayrak-secenek:disabled { cursor: default; }
+.bayrak-secili { border-color: var(--metin); background: #f0ebe0; }
+.bayrak-dogru { border-color: var(--onay); background: #eef6f0; }
+.bayrak-yanlis { border-color: var(--vurgu); background: #fbeeec; }
+.bayrak-secimg {
+  width: 52px; height: 39px; /* 4:3 — flag-icons aynı oran */
+  border-radius: 2px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: #eee;
+  -webkit-user-drag: none; user-select: none;
+}
+.bayrak-secemoji { display: grid; place-items: center; font-size: 26px; box-shadow: none; background: none; }
+.bayrak-isaret {
+  position: absolute; top: 3px; right: 5px;
+  font-weight: 700; font-size: 13px;
+}
+.bayrak-dogru .bayrak-isaret { color: var(--onay); }
+.bayrak-yanlis .bayrak-isaret { color: var(--vurgu); }
+
 /* ── Geri bildirim kartı ───────────────────────────────────────────────── */
 
 .geri {

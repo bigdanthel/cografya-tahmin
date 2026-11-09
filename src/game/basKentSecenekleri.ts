@@ -49,8 +49,9 @@ function kmUzaklik(a: [number, number], b: [number, number]): number {
   return 2 * DUNYA_YARICAPI * Math.asin(Math.sqrt(h))
 }
 
-/** Fisher-Yates — seçeneklerin sırası her soruda farklı olsun */
-function karistir<T>(dizi: T[]): T[] {
+/** Fisher-Yates — seçeneklerin sırası her soruda farklı olsun.
+ *  Bayrak seçenekleri de aynı yardımcıyı kullanır (bayrakSecenekleri.ts). */
+export function karistir<T>(dizi: T[]): T[] {
   const kopya = [...dizi]
   for (let i = kopya.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1))

@@ -125,9 +125,11 @@ yayın `gh-pages` dalı (yalnız dist + `.nojekyll`).
 Değişiklik yayınlama akışı: `npm run build:data` → `TABAN=/cografya-tahmin/ npm run build`
 → `main`'i it → `gh-pages`'i de it (bkz. README "Yayım" bölümü).
 
-**Sağlık (son ölçümler):** `tsc` temiz · 5/5 test dosyası yeşil · `npm audit` 0
-(vite 8.3.6, 2 HIGH `npm audit fix` ile kapandı) · `npm run build` temiz ·
-canlı sitede konsol hatası 0. `git status` temiz, `main` uzakla senkron.
+**Sağlık (son ölçümler):** `tsc` temiz · 5/5 test dosyası yeşil ve toplam
+**263 doğrulama** (durum 89, isabet 16, oyun 112, tiklanabilirlik 14, veri 32) ·
+`npm audit` 0 (vite 8.3.6, 2 HIGH `npm audit fix` ile kapandı) ·
+`npm run build` temiz (gzip 472 KB) · canlı sitede konsol hatası 0.
+`git status` temiz, `main` uzakla senkron.
 
 **Bitmiş işler:**
 - 8 Kasım etkileşim turu: tut-çek sürükleme, geodezi kırmızı hat,
@@ -139,14 +141,32 @@ canlı sitede konsol hatası 0. `git status` temiz, `main` uzakla senkron.
   körlük kademeli ipucu.
 - Günlük seri "başarısız günler de artırır" — **bilinçli Wordle mantığı**,
   testte belgeli; değiştirme.
+- **(9 Kasım, ikinci yarı) İki yeni mod: Başkentten Bul + Bayrağı Tanı.**
+  Kod (`bayrakSecenekleri.ts`, `BayrakSecim.tsx`, `types.ts`'e taşınan
+  `soruUret` + `'bas'` ipucu + `bayrakSorusu`), 263/263 test (oyun 112),
+  tarayıcı smoke 8 tur — konsol hatası 0. Ayrıntı ölçümleriyle PLAN
+  "tamamlananlar" maddesinde ve README modlar bölümünde. Ölçüm sırasında
+  iki gerçek bulguya yakalandı: (1) `soruUret`'te 'basKentin' için
+  `basKentSorusu` negatif zincirde dışlanmayı unuttuğum (test yakalattı,
+  olumlu tanıma çevrildi); (2) ilk komşuluk ölçümüm ISO3 anahtarıyla
+  yapılmış — `komsu` alanda Anahtar-bazlı, yeniden ölçünce 109 ülkede
+  ≥3 havuzlu komşu (35 ada komşusuz, aynı kıta yedeği devrede).
+- Ölçüm deseni (tekrar için): `window.COG` haritası
+  (tr → [bas, lon, lat, bayrak]) dev sunucu `public/hrta-smoke.json`
+  üzerinden enjekte edildi (kaynak: `src/data/world.json` meta → geçici
+  JSON; dosya ölçüm sonrası SİLİNDİ — git'e girmesin). Sentetik tıklama:
+  canvas'ta `pointerdown → pointerup → click` aynı koordinatta;
+  hedef ekran noktası `sx = cx + R·cos(φ)·sin(λ)`, `sy = cy − R·sin(φ)`
+  (R = min(W,H)·0.45, başlangıç rotasyonu [0,0]). Limb reddi 78°: ön yüz
+  hedefleri seçmek için `acos(cos·cos) ≤ 78` kontrolü yap.
 
 **Bekleyen (kullanıcıdan girdi gerekli):**
 1. **Puanlama senaryosu** — kullanıcı "puanlamada sıkıntı var" dedi, somut
    senaryo vermedi. `score.ts`'e dokunulmadı. Şüpheli örtük kurallar:
    komşu olmayan yanlış tıklamada konum × 0,2 kırpma; mesafe eğrisinin
    `isabet` noktasına göre işlemesi. Senaryo gelince önce tartış.
-2. **Hotseat ("arkadaşla sırayla") modu** — kullanıcı uzaktan oynama için
-   ücretsiz siteyi seçti (yapıldı); aynı 10 soruyu tek cihazda sırayla oynatma
-   modunu istiyor mu hâlâ belirsiz. Tasarım sorulacak: aynı ülke sırası,
-   sonda karşılaştırma tablosu; App.tsx'e mod, storage'a oyuncu kaydı gerekir.
+2. **Hotseat ("arkadaşla sırayla") ve URL-tohum** — ikisi de seçenek olarak
+   sunuldu; kullanıcının net kararı gelmedi, sıradaki turda sorulacak.
+   Hotseat tasarım taslağı: aynı ülke sırası tek cihazda, sonda
+   karşılaştırma; App.tsx'e mod + storage'a oyuncu kaydı gerekir.
 3. Dev sunucu: `npm run dev` → 5180 (şu an kapalı).

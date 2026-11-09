@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Globe } from './components/Globe'
 import { BasKentSecim } from './components/BasKentSecim'
+import { BayrakSecim } from './components/BayrakSecim'
 import { useQuiz } from './game/useQuiz'
 import { MODLAR, adBulAyarla, bugun, type ModTanimi } from './game/types'
 import { sonucMetni, BASLIK_PUAN, YON_IPUCU_CEZASI } from './game/score'
@@ -136,15 +137,22 @@ export default function App() {
 
   const cevapAsama = q.asama === 'cevap'
 
-  /* Başkent şıkları, konum onaylandıktan sonra cevap açıklanana kadar durur.
-     Cevap açıklandıktan sonra da görünür kalır (doğru/yanlış işareti için). */
+  /* Başkent/bayrak şıkları, konum onaylandıktan sonra cevap açıklanana
+     kadar durur. Cevap açıklandıktan sonra da görünür kalır (doğru/yanlış
+     işareti için). */
+  const ikinciSoru = s.basKentSorusu || s.bayrakSorusu
+  const ikinciSecenekSayisi = s.basKentSorusu ? s.secenekler.length : s.bayrakSecenekleri.length
   const cevapAsamasiGorunur =
-    cevapAsama && (!s.basKentSorusu || !q.sonTuru || s.secenekler.length > 0)
+    cevapAsama && (!ikinciSoru || !q.sonTuru || ikinciSecenekSayisi > 0)
 
   /* Kullanıcının seçtiği şık — sonuç metninden geri çözüyoruz ki
-     state'e fazladan alan eklemeyelim. */
+     state'e fazladan alan eklemeyelim. Başkentte metin, bayrakta ülke adı
+     araması yapılır (bkz. useQuiz.bayrakSec). */
   const secilenSecenek = q.sonTuru?.basKentGirdi
     ? (s.secenekler.find((x) => x.metin === q.sonTuru?.basKentGirdi) ?? null)
+    : null
+  const secilenBayrak = q.sonTuru?.basKentGirdi
+    ? (s.bayrakSecenekleri.find((x) => x.ulke === q.sonTuru?.basKentGirdi) ?? null)
     : null
 
   return (
@@ -175,6 +183,20 @@ export default function App() {
                 secenekler={s.secenekler}
                 onSecim={q.basKentSec}
                 secilen={secilenSecenek}
+                aciklandi={Boolean(q.sonTuru)}
+              />
+            </div>
+          )}
+
+          {/* Bayrağı Tanı — konum onaylandıktan sonra 5 bayraktan doğru
+              olanı seç. Şıklar kalkmaz: doğru yeşil ✓, yanlış kırmızı ✕. */}
+          {cevapAsamasiGorunur && s.bayrakSorusu && (
+            <div className="bas-kent-serit">
+              <div className="bas-kent-etiket">{s.hedef.tr} bayrağı</div>
+              <BayrakSecim
+                secenekler={s.bayrakSecenekleri}
+                onSecim={q.bayrakSec}
+                secilen={secilenBayrak}
                 aciklandi={Boolean(q.sonTuru)}
               />
             </div>
@@ -314,6 +336,15 @@ function SoruKarti({ q }: { q: ReturnType<typeof useQuiz> }) {
         </>
       )}
 
+      {/* Başkentten Bul: soru BAŞKENT adıdır, ülke gizli. Kıta/zorluk
+          rozetleri normal akışta görünmeye devam eder. */}
+      {s.ipucu === 'bas' && (
+        <>
+          <div className="soru-etiket">Bu başkent hangi ülkenin?</div>
+          <h2 className="soru-adi">{s.hedef.bas}</h2>
+        </>
+      )}
+
       {s.ipucu === 'bayrak' && (
         <>
           <div className="soru-etiket">Bu bayrak hangi ülkenin?</div>
@@ -420,14 +451,15 @@ function CevapAsamasi({ q }: { q: ReturnType<typeof useQuiz> }) {
         <span className="puan-dagilim">
           {k.konum} konum
           {k.kita > 0 && ` + ${k.kita} kıta`}
-          {s.basKentSorusu && ' + başkent'}
+          {(s.basKentSorusu || s.bayrakSorusu) &&
+            ` + ${s.bayrakSorusu ? 'bayrak' : 'başkent'}`}
         </span>
       </div>
 
-      {s.basKentSorusu && (
+      {(s.basKentSorusu || s.bayrakSorusu) && (
         <div className="geri-eylem">
           <button className="ana-btn ana-btn-ikincil geri-geri-btn" onClick={q.basKentiAtla}>
-            Başkenti atla
+            {s.bayrakSorusu ? 'Bayrağı atla' : 'Başkenti atla'}
           </button>
         </div>
       )}
@@ -488,6 +520,28 @@ function GeriKarti({ q }: { q: ReturnType<typeof useQuiz> }) {
           </div>
         )}
 
+        {/* Bayrağı Tanı: ikinci sorunun sonucu. Doğru = hedefin bayrağı
+            (ülke adı zaten soruda verildi); "sen: X" karıştırılan bayrağın
+            ülkesini gösterir. */}
+        {s.bayrakSorusu && (
+          <div className="detay-satir">
+            <span className="detay-etiket">Bayrak</span>
+            {t.basKentTur === 'bos' ? (
+              <span className="detay-ipucu">seçilmedi</span>
+            ) : (
+              <>
+                <span className="detay-deger">{s.hedef.tr}</span>
+                {t.basKentGirdi && t.basKentGirdi !== s.hedef.tr && (
+                  <span className="detay-ipucu">sen: {t.basKentGirdi}</span>
+                )}
+                <span className="detay-ipucu" style={{ marginLeft: 'auto' }}>
+                  +{t.basKentPuan} / {BASLIK_PUAN}
+                </span>
+              </>
+            )}
+          </div>
+        )}
+
         {s.ipucu === 'yok' && (
           <div className="detay-satir">
             <span className="detay-etiket">İpuçları</span>
@@ -516,7 +570,8 @@ function GeriKarti({ q }: { q: ReturnType<typeof useQuiz> }) {
         <span className="puan-dagilim">
           {k.konum} konum
           {k.kita > 0 && ` + ${k.kita} kıta`}
-          {t.basKentPuan > 0 && ` + ${t.basKentPuan} başkent`}
+          {t.basKentPuan > 0 &&
+            ` + ${t.basKentPuan} ${s.bayrakSorusu ? 'bayrak' : 'başkent'}`}
           {t.sureBonusu > 0 && ` + ${t.sureBonusu} süre`}
           {t.ipucuCezasi > 0 && ` − ${t.ipucuCezasi} ipucu`}
         </span>
